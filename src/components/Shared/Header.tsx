@@ -140,8 +140,10 @@ const Header: React.FC = () => {
           : [
             { label: "Home", icon: <Home />, path: "/" },
             { label: "Hotels", icon: <Hotel />, onClick: navigateToSearch },
-            { label: "Contact", icon: <ContactMail />, path: "/contact-us" },
             { label: "About", icon: <Info />, path: "/about-us" },
+             { label: "Blog", icon: <ContactMail />, path: "/blog" },
+            { label: "Contact", icon: <ContactMail />, path: "/contact-us" },
+            
           ];
 
   const location = useLocation();

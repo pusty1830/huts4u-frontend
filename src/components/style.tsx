@@ -288,7 +288,7 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
           display: { xs: "block", md: "grid" },
         }}
       >
-        <img style={{height:'300px'}} src={displayImages[0]} alt="Main" />
+        <img loading="lazy" style={{height:'300px'}} src={displayImages[0]} alt="Main" />
       </Box>
 
       {!isMobile &&

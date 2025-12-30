@@ -47,6 +47,7 @@ import {
 } from "../services/services";
 import SearchSection from "./Home Section/SearchSection";
 import dayjs from "dayjs";
+import { Helmet } from "react-helmet-async";
 
 // Pagination constants
 const ITEMS_PER_PAGE = 5;
@@ -2135,6 +2136,25 @@ const SearchResults = () => {
       p: { xs: 2, sm: 3, md: 4 },
       minHeight: "100vh",
     }}>
+      <Helmet>
+  <title>Search Hotels in Bhubaneswar | Huts4u</title>
+  <meta
+    name="description"
+    content="Search and book hourly hotels in Bhubaneswar quickly. Find hotels near you for short stays, business trips, or leisure visits."
+  />
+  <link rel="canonical" href="https://www.huts4u.com/search" />
+  <script type="application/ld+json">
+    {`
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Search Hotels",
+        "url": "https://www.huts4u.com/search"
+      }
+    `}
+  </script>
+</Helmet>
+
       <SearchSection />
 
       <Grid container spacing={{ xs: 2, md: 3 }}>

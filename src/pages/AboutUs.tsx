@@ -12,6 +12,7 @@ import color from "../components/color";
 import SectionHeader from "../components/SectionHeader";
 import TestimonialsCarousel from "./Home Section/TestimonialsCarousel";
 import { Community, feature2, konarkHero, Mission } from "../Image/Image";
+import { Helmet } from "react-helmet-async";
 
 const AboutUs = () => {
   // Data for team members
@@ -65,6 +66,25 @@ const AboutUs = () => {
 
   return (
     <Box sx={{ background: color.thirdColor }}>
+      <Helmet>
+        <title>About Us | Huts4u</title>
+        <meta
+          name="description"
+          content="Learn about Huts4u, the best platform for hourly hotel stays in Bhubaneswar."
+        />
+        <link rel="canonical" href="https://www.huts4u.com/about-us" />
+        <script type="application/ld+json">
+          {`
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "About Us",
+        "url": "https://www.huts4u.com/about-us"
+      }
+    `}
+        </script>
+      </Helmet>
+
       <Container >
         <SectionHeader
           primaryText={" Welcome to Huts4u"}

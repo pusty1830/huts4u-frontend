@@ -1,47 +1,51 @@
-import {
-  AddCircleOutline,
-  CheckCircle,
-  ExpandLess,
-  ExpandMore,
-  Star,
-  StarRounded,
-  Block,
-  LocationOn,
-  DirectionsCar,
-  DirectionsTransit,
-  DirectionsWalk,
-  Search,
-  EventBusy,
-  Warning,
-} from "@mui/icons-material";
-import {
-  Box,
-  Button,
-  Card,
-  CardMedia,
-  Chip,
-  Divider,
-  FormControl,
-  Grid,
-  List,
-  RadioGroup,
-  styled,
-  Tab,
-  Tabs,
-  ToggleButton,
-  Typography,
-  useMediaQuery,
-  Alert,
-  AlertTitle,
-  CircularProgress,
-  Tooltip,
-} from "@mui/material";
-import dayjs from "dayjs";
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import color from "../components/color";
-import CustomButton from "../components/CustomButton";
-import { amenityIcons } from "../components/data";
+// MUI Icons – only import the icons you use
+import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import Star from '@mui/icons-material/Star';
+import StarRounded from '@mui/icons-material/StarRounded';
+import Block from '@mui/icons-material/Block';
+import LocationOn from '@mui/icons-material/LocationOn';
+import DirectionsCar from '@mui/icons-material/DirectionsCar';
+import DirectionsTransit from '@mui/icons-material/DirectionsTransit';
+import DirectionsWalk from '@mui/icons-material/DirectionsWalk';
+import Search from '@mui/icons-material/Search';
+import EventBusy from '@mui/icons-material/EventBusy';
+import Warning from '@mui/icons-material/Warning';
+
+// MUI Components – import individually
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Card from '@mui/material/Card';
+import CardMedia from '@mui/material/CardMedia';
+import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
+import FormControl from '@mui/material/FormControl';
+import Grid from '@mui/material/Grid';
+import List from '@mui/material/List';
+import RadioGroup from '@mui/material/RadioGroup';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
+import ToggleButton from '@mui/material/ToggleButton';
+import Typography from '@mui/material/Typography';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import Alert from '@mui/material/Alert';
+import AlertTitle from '@mui/material/AlertTitle';
+import CircularProgress from '@mui/material/CircularProgress';
+import Tooltip from '@mui/material/Tooltip';
+import { styled } from '@mui/material/styles';
+
+// Third-party libraries
+import dayjs from 'dayjs';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
+
+// Local components / services / constants
+import color from '../components/color';
+import CustomButton from '../components/CustomButton';
+import { amenityIcons } from '../components/data';
 import {
   BoxStyle,
   CustomRadio,
@@ -50,10 +54,9 @@ import {
   ImageGrid,
   RoomAmenities,
   StyledLabel,
-} from "../components/style";
-import { MAPBOX_ACCESS_TOKEN } from "../services/Secret";
-// Add inventory service import
-import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories } from "../services/services";
+} from '../components/style';
+import { MAPBOX_ACCESS_TOKEN } from '../services/Secret';
+import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories } from '../services/services';
 
 /**
  * calculatePriceBreakdown (simplified - no discount)
@@ -176,15 +179,15 @@ const checkRoomAvailabilityForDate = (room: any, inventoryData: any[], checkDate
 
   const roomId = room.id;
   const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  
+
   // Find inventory for this specific room and date
-  const dayInventory = inventoryData.find(inv => 
+  const dayInventory = inventoryData.find(inv =>
     inv.roomId === roomId && dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   );
-  
+
   // If no inventory record for this date, assume available
   if (!dayInventory) return true;
-  
+
   // Check if room is blocked in inventory
   if (dayInventory.isBlocked) return false;
 
@@ -225,20 +228,20 @@ const checkRoomAvailabilityForDateRange = (room: any, inventoryData: any[], chec
 
   const startDate = dayjs(checkinDate);
   const endDate = dayjs(checkoutDate);
-  
+
   // Check each date in the range
   for (let date = startDate; date.isBefore(endDate); date = date.add(1, 'day')) {
     const dateStr = date.format('YYYY-MM-DD');
-    
+
     // Find inventory for this specific date
-    const dayInventory = inventoryData?.find(inv => 
+    const dayInventory = inventoryData?.find(inv =>
       inv.roomId === room.id && dayjs(inv.date).format('YYYY-MM-DD') === dateStr
     );
-    
+
     if (dayInventory) {
       // If inventory exists and room is blocked
       if (dayInventory.isBlocked) return false;
-      
+
       // If no overnight availability
       if (dayInventory.overnightAvailable <= dayInventory.overnightBooked) {
         return false;
@@ -246,7 +249,7 @@ const checkRoomAvailabilityForDateRange = (room: any, inventoryData: any[], chec
     }
     // If no inventory record for this date, continue checking next date
   }
-  
+
   return true;
 };
 
@@ -256,16 +259,16 @@ const getInventoryPriceForDate = (room: any, inventoryData: any[], checkDate: st
 
   const roomId = room.id;
   const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  
+
   // Find inventory for this specific date
-  const dayInventory = inventoryData?.find(inv => 
+  const dayInventory = inventoryData?.find(inv =>
     inv.roomId === roomId && dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   );
 
   if (!dayInventory) return room[slot] || 0;
 
   // Return inventory-specific rate if available, otherwise room rate
-  switch(slot) {
+  switch (slot) {
     case 'rateFor1Night':
       return dayInventory.overnightRate || room.rateFor1Night || 0;
     case 'rateFor3Hour':
@@ -301,7 +304,7 @@ const HotelDetails: React.FC = () => {
   hotel.propertyImages = hotel.propertyImages || [];
 
   // Inventory state - store by roomId and date
-  const [inventoryData, setInventoryData] = useState<{[key: string]: any[]}>({});
+  const [inventoryData, setInventoryData] = useState<{ [key: string]: any[] }>({});
   const [loadingInventory, setLoadingInventory] = useState<boolean>(true);
 
   // Ratings state
@@ -330,11 +333,11 @@ const HotelDetails: React.FC = () => {
       }
 
       setLoadingInventory(true);
-      
+
       // Create date range
       let startDate = checkinDate;
       let endDate = checkOutDate;
-      
+
       if (bookingType === "hourly") {
         // For hourly bookings, only check the checkin date
         endDate = checkinDate;
@@ -343,17 +346,17 @@ const HotelDetails: React.FC = () => {
         endDate = dayjs(checkinDate).add(1, 'day').format('YYYY-MM-DD');
       }
 
-      const inventoryByRoom: {[key: string]: any[]} = {};
+      const inventoryByRoom: { [key: string]: any[] } = {};
 
       // Fetch inventory for each room individually
       for (const room of hotel.rooms) {
         try {
           const payLoad = {
-        data: { filter: "",roomId:room.id,date:startDate },
-        page: 0,
-        pageSize: 1000,
-        order: [["createdAt", "ASC"]],
-      }
+            data: { filter: "", roomId: room.id, date: startDate },
+            page: 0,
+            pageSize: 1000,
+            order: [["createdAt", "ASC"]],
+          }
 
           const inventoryResponse = await getAllInventories(payLoad);
           let inventoryData = inventoryResponse?.data?.data;
@@ -424,20 +427,20 @@ const HotelDetails: React.FC = () => {
 
     const roomInventory = inventoryData[room.id] || [];
     const checkDay = dayjs(checkinDate).format('YYYY-MM-DD');
-    
+
     // Find inventory for this specific date
-    const dayInventory = roomInventory.find(inv => 
+    const dayInventory = roomInventory.find(inv =>
       dayjs(inv.date).format('YYYY-MM-DD') === checkDay
     );
-    
+
     // If no inventory record, slot is available
     if (!dayInventory) return true;
-    
+
     // Check if room is blocked
     if (dayInventory.isBlocked) return false;
 
     // Check specific slot availability
-    switch(slot) {
+    switch (slot) {
       case 'rateFor1Night':
         return dayInventory.overnightAvailable > dayInventory.overnightBooked;
       case 'rateFor3Hour':
@@ -454,7 +457,7 @@ const HotelDetails: React.FC = () => {
   // Get price for a specific slot, considering inventory rates
   const getPriceForSlot = (room: any, slot: string) => {
     if (!room || !slot || !checkinDate) return room[slot] || 0;
-    
+
     return getInventoryPriceForDate(
       room,
       inventoryData[room.id] || [],
@@ -468,81 +471,81 @@ const HotelDetails: React.FC = () => {
     // First check room status from database
     const roomStatus = room.status?.toLowerCase();
     const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
-    
+
     if (!isStatusAvailable) {
-      return { 
-        isAvailable: false, 
-        status: 'Unavailable', 
+      return {
+        isAvailable: false,
+        status: 'Unavailable',
         icon: <Block />,
         reason: 'Room is currently unavailable'
       };
     }
 
     const roomInventory = inventoryData[room.id] || [];
-    
+
     if (roomInventory.length === 0) {
-      return { 
-        isAvailable: true, 
-        status: 'Available', 
+      return {
+        isAvailable: true,
+        status: 'Available',
         icon: null,
         reason: 'Available for booking'
       };
     }
-    
+
     // For the specific checkin date
     const checkDay = checkinDate ? dayjs(checkinDate).format('YYYY-MM-DD') : '';
-    const dayInventory = checkDay ? roomInventory.find(inv => 
+    const dayInventory = checkDay ? roomInventory.find(inv =>
       dayjs(inv.date).format('YYYY-MM-DD') === checkDay
     ) : null;
-    
+
     if (dayInventory) {
       if (dayInventory.isBlocked) {
-        return { 
-          isAvailable: false, 
-          status: 'Blocked', 
+        return {
+          isAvailable: false,
+          status: 'Blocked',
           icon: <EventBusy />,
           reason: 'Room is blocked for selected date'
         };
       }
-      
+
       // Check specific slot availability based on booking type
       if (bookingType === "hourly") {
-        const hasHourlyAvailability = 
+        const hasHourlyAvailability =
           dayInventory.threeHourAvailable > dayInventory.threeHourBooked ||
           dayInventory.sixHourAvailable > dayInventory.sixHourBooked ||
           dayInventory.twelveHourAvailable > dayInventory.twelveHourBooked;
-        
+
         if (!hasHourlyAvailability) {
-          return { 
-            isAvailable: false, 
-            status: 'Sold Out', 
+          return {
+            isAvailable: false,
+            status: 'Sold Out',
             icon: <Block />,
             reason: 'No hourly slots available for selected date'
           };
         }
       } else {
         if (dayInventory.overnightAvailable <= dayInventory.overnightBooked) {
-          return { 
-            isAvailable: false, 
-            status: 'Sold Out', 
+          return {
+            isAvailable: false,
+            status: 'Sold Out',
             icon: <Block />,
             reason: 'No overnight availability for selected date'
           };
         }
       }
     }
-    
-    return { 
-      isAvailable: true, 
-      status: 'Available', 
+
+    return {
+      isAvailable: true,
+      status: 'Available',
       icon: null,
       reason: 'Available for booking'
     };
   };
 
   // Filter rooms
-  const availableRooms = hotel.rooms.filter((room:any) => isRoomAvailable(room));
-  const unavailableRooms = hotel.rooms.filter((room:any) => !isRoomAvailable(room));
+  const availableRooms = hotel.rooms.filter((room: any) => isRoomAvailable(room));
+  const unavailableRooms = hotel.rooms.filter((room: any) => !isRoomAvailable(room));
 
   // Function to fetch all ratings
   const fetchAllRatings = async () => {
@@ -937,7 +940,7 @@ const HotelDetails: React.FC = () => {
   // Function to render sold out overlay with inventory info
   const renderSoldOutOverlay = (room: any) => {
     const inventoryStatus = getRoomInventoryStatus(room);
-    
+
     return (
       <Box
         sx={{
@@ -989,6 +992,8 @@ const HotelDetails: React.FC = () => {
         position: "relative",
       }}
     >
+
+
       <Box
         sx={{
           px: { xs: 0, md: 2 },
@@ -1368,7 +1373,7 @@ const HotelDetails: React.FC = () => {
                       color={color.thirdColor}
                       fontSize={"20px"}
                     >
-                      Get upto 15% discount on all bookings 
+                      Get upto 15% discount on all bookings
                     </Typography>
                   </Box>
                 )}
@@ -1716,7 +1721,7 @@ const HotelDetails: React.FC = () => {
                   onClick={() => {
                     // Prevent booking if no available rooms
                     if (availableRooms.length === 0) return;
-                    
+
                     // Check if selected room and slot are still available
                     if (selectedRoom && selectedSlot.slot) {
                       const isAvailable = isSlotAvailable(selectedRoom, selectedSlot.slot);
@@ -1846,7 +1851,7 @@ const HotelDetails: React.FC = () => {
                 const availableSlots = (bookingType || "").toLowerCase() === "hourly"
                   ? ["rateFor3Hour", "rateFor6Hour", "rateFor12Hour"]
                   : ["rateFor1Night"];
-                
+
                 const hasAvailableSlots = availableSlots.some(slot => {
                   const price = getPriceForSlot(room, slot);
                   return price > 0 && isSlotAvailable(room, slot);
@@ -1875,7 +1880,7 @@ const HotelDetails: React.FC = () => {
                       }}
                       onClick={() => {
                         if (!hasAvailableSlots) return;
-                        
+
                         // Select the room when card is clicked
                         setSelectedRoom(room);
                         // Also set default slot for this room
@@ -2125,7 +2130,7 @@ const HotelDetails: React.FC = () => {
                                     ₹ {Math.round(perUnitMain)}
                                   </span>
                                   <br />
-                                  <span style={{ fontSize: "10px"}}>
+                                  <span style={{ fontSize: "10px" }}>
                                     + ₹{Math.round(perUnitTaxes)} taxes & fees
                                   </span>
                                 </Typography>
