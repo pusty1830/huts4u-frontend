@@ -11,9 +11,12 @@ import { blogPosts } from "../components/blog";
 import { Link } from "react-router-dom";
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
-import BlogPage from "./BlogPage";
+
 
 const LazyHotelCardCarousel = lazy(() => import("./Home Section/HotelCardCarousel"));
+const LazyBlogPage=lazy(()=>import("./BlogPage"))
+
+
 
 const HomePage = () => {
   const latestThree = blogPosts.slice(0, 3);
@@ -83,7 +86,11 @@ const HomePage = () => {
         ></SectionHeader>
         <TestimonialsCarousel></TestimonialsCarousel>
 
-        <BlogPage/>
+
+      <Suspense fallback={<div>Loading Blog...</div>}>
+          <LazyBlogPage />
+        </Suspense>
+        
 
         <SectionHeader
           primaryText={"Frequently Asked Questions"}

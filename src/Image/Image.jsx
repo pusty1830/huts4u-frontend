@@ -19,13 +19,13 @@ export const FooterImage =
   "https://huts44u.s3.ap-south-1.amazonaws.com/footer.webp";
 
 export const feature1 =
-  "https://huts44u.s3.ap-south-1.amazonaws.com/feature+1.jpg";
+  "https://image2url.com/r2/default/images/1767365081545-752ee778-4b1e-4d5a-be7e-eac82f8931a7.jpg";
 export const feature2 =
-  "https://huts44u.s3.ap-south-1.amazonaws.com/feature+2.jpg";
+  "https://image2url.com/r2/default/images/1767365101039-c7af13ef-ff85-4fd9-ba52-68614715cf8b.jpg";
 export const feature3 =
-  "https://huts44u.s3.ap-south-1.amazonaws.com/feature+3.jpg";
+  "https://image2url.com/r2/default/images/1767365111928-25a6e029-586d-425e-9cf1-8fd732a99eb0.jpg";
 export const feature4 =
-  "https://huts44u.s3.ap-south-1.amazonaws.com/feature+4.jpg";
+  "https://image2url.com/r2/default/images/1767365122672-6300015a-02af-43f2-9b86-8e8213c9f1c8.jpg";
 export const Mission =
   "https://huts44u.s3.ap-south-1.amazonaws.com/Our+Mission+%26+Values.jpg";
 export const Community =
