@@ -39,7 +39,7 @@ interface BookingDetails {
 interface RenderRazorpayProps {
     orderDetails: any;
     amount: any;
-    bookingDetails: BookingDetails;
+    bookingDetails:any;
 }
 
 const RenderRazorpay: React.FC<RenderRazorpayProps> = ({
@@ -137,6 +137,9 @@ const RenderRazorpay: React.FC<RenderRazorpayProps> = ({
                         status: 'pending',
                         paymentId: res?.data?.data?.id,
                         rooms: bookingDetails?.rooms,
+                         ...(bookingDetails?.gstDetails && {
+    GstDetail: bookingDetails.gstDetails,
+  }),
                     };
                     
                     console.log(payLoad);
@@ -163,6 +166,9 @@ const RenderRazorpay: React.FC<RenderRazorpayProps> = ({
                             failureReason: null,
                             processedBy: null,
                             note: "Daily PayOut ",
+                             ...(bookingDetails?.gstDetails && {
+    GstDetail: bookingDetails.gstDetails,
+  }),
                         };
 
                         const mypaymentPayload = {
@@ -185,6 +191,9 @@ const RenderRazorpay: React.FC<RenderRazorpayProps> = ({
                             failureReason: null,
                             processedBy: null,
                             note: "Auto payout settlement",
+                             ...(bookingDetails?.gstDetails && {
+    GstDetail: bookingDetails.gstDetails,
+  }),
                         };
                         
                         console.log(mypaymentPayload);

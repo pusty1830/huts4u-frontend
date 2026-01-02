@@ -287,3 +287,27 @@ return client.get(`/Room/get-one-record/${id}`);
 
 
 //otp
+export function createGST(payLoad:any){
+    return client.post('/gst/create',payLoad);
+}
+
+
+export function getOneGSTByID(id:any){
+return client.get(`/gst/get-one-record/${id}`);
+}
+
+export function getAllGSTByUserId(userId:any){
+    return client.get(`/gst/get-all-record-by-user/${userId}`)
+}
+
+export function updateGST(id:any,payLoad:any){
+    return client.patch(`/gst/update-record/${id}`,payLoad);
+}
+
+export function deleteGST(id: any, userId: any) {
+  return client.delete(`/gst/delete-record/${id}`, {
+    params: {
+      userId,
+    },
+  });
+}
