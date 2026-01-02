@@ -11,8 +11,8 @@ export const Khandagiri =
   "https://huts44u.s3.ap-south-1.amazonaws.com/khandagiri.jpg";
 
 export const konarkHero =
-  "https://huts44u.s3.ap-south-1.amazonaws.com/konark+hero.jpg";
-export const bgHero = "https://huts44u.s3.ap-south-1.amazonaws.com/bg+(1).jpg";
+  "https://image2url.com/r2/default/images/1767359216606-870e94e4-b114-4e58-89fb-6919bdf34415.jpg";
+export const bgHero = "https://image2url.com/r2/default/images/1767359182217-d7315567-78af-4987-9ba7-c0ff052665c4.jpg";
 export const LoginImage = "https://huts44u.s3.ap-south-1.amazonaws.com/skyimage.jpeg";
 
 export const FooterImage =

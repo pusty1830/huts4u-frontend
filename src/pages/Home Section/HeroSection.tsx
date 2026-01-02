@@ -1,9 +1,9 @@
 import { Box, Typography } from "@mui/material";
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import color from "../../components/color";
 import { useScreenSize } from "../../components/style";
-import SearchSection from "./SearchSection";
-import { bgHero, konarkHero } from "../../Image/Image";
+import { bgHero,konarkHero } from "../../Image/Image";
+const SearchSection = lazy(() => import("./SearchSection"));
 
 const HeroSection: React.FC = () => {
   const { isBelow400px } = useScreenSize();
@@ -89,18 +89,31 @@ const HeroSection: React.FC = () => {
         }}
       ></Box>
 
+     <Box
+  sx={{
+    width: { xs: "90%", md: "80%" },
+    position: "absolute",
+    bottom: isBelow400px ? "4%" : "12%",
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 3,
+  }}
+>
+  <Suspense
+    fallback={
       <Box
         sx={{
-          width: { xs: "90%", md: "80%" },
-          position: "absolute",
-          bottom: isBelow400px ? "4%" : "12%",
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 3,
+          height: 120,
+          background: "rgba(255,255,255,0.6)",
+          borderRadius: "12px",
         }}
-      >
-        <SearchSection></SearchSection>
-      </Box>
+      />
+    }
+  >
+    <SearchSection />
+  </Suspense>
+</Box>
+
     </Box>
   );
 };
