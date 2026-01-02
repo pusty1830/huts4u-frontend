@@ -1,8 +1,13 @@
-import { Box, Typography } from "@mui/material";
+
 import React, { Suspense, lazy } from "react";
+
+
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+
 import color from "../../components/color";
 import { useScreenSize } from "../../components/style";
-import { bgHero,konarkHero } from "../../Image/Image";
+import { bgHero, konarkHero } from "../../Image/Image";
 const SearchSection = lazy(() => import("./SearchSection"));
 
 const HeroSection: React.FC = () => {

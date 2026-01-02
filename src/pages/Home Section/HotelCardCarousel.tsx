@@ -1,25 +1,31 @@
-import { LocationOn, Person, Block, Star } from "@mui/icons-material";
-import {
-  Box,
-  Card,
-  CardContent,
-  CardMedia,
-  Rating,
-  Typography,
-  Tooltip,
-} from "@mui/material";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import dayjs from "dayjs";
 import Slider from "react-slick";
+
+import LocationOnIcon from "@mui/icons-material/LocationOn";
+import PersonIcon from "@mui/icons-material/Person";
+import BlockIcon from "@mui/icons-material/Block";
+import StarIcon from "@mui/icons-material/Star";
+
+import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import CardMedia from "@mui/material/CardMedia";
+import Rating from "@mui/material/Rating";
+import Typography from "@mui/material/Typography";
+import Tooltip from "@mui/material/Tooltip";
+
 import color from "../../components/color";
 import { CustomNextArrow, useScreenSize } from "../../components/style";
-import { useState, useEffect } from "react";
+
 import {
   getAllHotels,
   getMyAllHotelswithBelongsTo,
   getAllRatings,
-  getAllInventories
+  getAllInventories,
 } from "../../services/services";
-import dayjs from "dayjs";
-import { useNavigate } from "react-router-dom";
+
 
 // 💰 Price Calculation
 export const calculatePriceBreakdown = (basePrice: number) => {
@@ -722,7 +728,7 @@ const HotelCardCarousel = () => {
                         gap: 0.5,
                       }}
                     >
-                      <Block sx={{ fontSize: 16 }} />
+                      <BlockIcon sx={{ fontSize: 16 }} />
                       {inventoryStatus.status.toUpperCase()}
                     </Typography>
                   </Tooltip>
@@ -747,7 +753,7 @@ const HotelCardCarousel = () => {
                       gap: 0.5,
                     }}
                   >
-                    <Star sx={{ fontSize: 14 }} />
+                    <StarIcon sx={{ fontSize: 14 }} />
                     TOP RATED
                   </Typography>
                 )}
@@ -902,7 +908,7 @@ const HotelCardCarousel = () => {
                         width: '50%'
                       }}
                     >
-                      <LocationOn
+                      <LocationOnIcon
                         style={{ fontSize: "18px", paddingRight: "4px" }}
                       />
                       {hotel.city || "City N/A"}
@@ -918,7 +924,7 @@ const HotelCardCarousel = () => {
                         width: '50%'
                       }}
                     >
-                      <Person
+                      <PersonIcon
                         style={{ fontSize: "18px", paddingRight: "4px" }}
                       />
                       {hotel.rooms?.[0]?.standardRoomOccupancy || 2}

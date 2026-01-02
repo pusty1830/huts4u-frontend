@@ -1,16 +1,18 @@
-import { Box, Button, Container, Typography, Grid, Card, CardMedia, CardContent, Stack, Chip } from "@mui/material";
-import { lazy, Suspense } from "react";
+import React,{lazy,Suspense} from "react";
+
+import Box from "@mui/material/Box";
+import Container from "@mui/material/Container";
+
+import { Helmet } from "react-helmet-async";
+
 import SectionHeader from "../components/SectionHeader";
 import FAQSection from "./Home Section/FAQSection";
 import ImageGridLayout from "./Home Section/FeaturesGridLayout";
 import HeroSection from "./Home Section/HeroSection";
 import ImageGallery from "./Home Section/ImageGallery";
 import TestimonialsCarousel from "./Home Section/TestimonialsCarousel";
-import { Helmet } from "react-helmet-async";
-import { blogPosts } from "../components/blog";
-import { Link } from "react-router-dom";
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+
+
 
 
 const LazyHotelCardCarousel = lazy(() => import("./Home Section/HotelCardCarousel"));
@@ -19,16 +21,7 @@ const LazyBlogPage=lazy(()=>import("./BlogPage"))
 
 
 const HomePage = () => {
-  const latestThree = blogPosts.slice(0, 3);
   
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
 
   return (
     <Box sx={{overflowY:"hidden"}}>

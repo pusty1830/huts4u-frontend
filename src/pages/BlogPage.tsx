@@ -1,27 +1,29 @@
 import React from "react";
 import { blogPosts } from "../components/blog";
-import {
-  Box,
-  Typography,
-  Button,
-  Grid,
-  Card,
-  CardMedia,
-  CardContent,
-  Container,
-  Stack,
-  Chip,
-  useMediaQuery,
-  useTheme
-} from "@mui/material";
-import { Link, useLocation, LinkProps } from "react-router-dom";
-import { Helmet } from "react-helmet-async";
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import { Link, useLocation,LinkProps } from "react-router-dom";
+
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import Grid from "@mui/material/Grid";
+import Card from "@mui/material/Card";
+import CardMedia from "@mui/material/CardMedia";
+import CardContent from "@mui/material/CardContent";
+import Container from "@mui/material/Container";
+import Stack from "@mui/material/Stack";
+import Chip from "@mui/material/Chip";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import { styled } from "@mui/material/styles";
 import { ButtonProps } from "@mui/material/Button";
+
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+
+import { Helmet } from "react-helmet-async";
 import color from "../components/color";
+
 
 const BlogPage: React.FC = () => {
   const location = useLocation();

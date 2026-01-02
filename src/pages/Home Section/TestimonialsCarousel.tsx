@@ -1,9 +1,16 @@
-import { Avatar, Box, Rating, Typography } from "@mui/material";
 import React from "react";
 import Slider from "react-slick";
-import "slick-carousel/slick/slick-theme.css";
+
+import Avatar from "@mui/material/Avatar";
+import Box from "@mui/material/Box";
+import Rating from "@mui/material/Rating";
+import Typography from "@mui/material/Typography";
+
 import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
+
 import color from "../../components/color";
+
 
 const testimonials = [
   {
