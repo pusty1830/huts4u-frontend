@@ -16,7 +16,6 @@ import jsPDF from "jspdf";
 import color from "../components/color";
 import { getAllMyBookings } from "../services/services";
 import { toast } from "react-toastify";
-import { logo } from "../Image/Image";
 import { getUserName } from "../services/axiosClient";
 
 // small helpers
@@ -36,8 +35,6 @@ const normalizeAmountToRupees = (val: any) => {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // Calculate invoice breakdown based on the example image structure
-// More accurate calculation based on your specific example
-// More accurate calculation based on your specific example
 const calculateInvoiceBreakdown = (finalAmount: number) => {
   const discountPercentage = 0.05; // 5% discount
   const serviceChargePercentage = 0.13; // 13% of Base Price WITH GST
@@ -48,17 +45,6 @@ const calculateInvoiceBreakdown = (finalAmount: number) => {
   const discountAmount = round2(subtotalBeforeDiscount * discountPercentage);
   
   // Step 2: We need to find Base Price (x) that satisfies:
-  // Base Total = 1.05x
-  // Service Charges excl GST = 0.13 * (1.05x) = 0.1365x
-  // Service Total = 0.1365x * 1.18 = 0.16107x
-  // Core Total = 1.05x + 0.16107x = 1.21107x
-  // Convenience excl GST = 0.02 * 1.21107x = 0.0242214x
-  // Convenience Total = 0.0242214x * 1.18 = 0.028581252x
-  // Subtotal = 1.05x + 0.16107x + 0.028581252x = 1.239651252x
-  
-  // So: 1.23965x = subtotalBeforeDiscount
-  // x = subtotalBeforeDiscount / 1.23965
-  
   const basePriceExclGST = round2(subtotalBeforeDiscount / 1.23965);
   
   // Now calculate all components
@@ -107,10 +93,6 @@ const calculateInvoiceBreakdown = (finalAmount: number) => {
     totalTaxable: round2(basePriceExclGST + serviceChargesExclGST + convenienceFeeExclGST),
   };
 };
-
-
-
-
 
 const numberToWords = (amount: number) => {
   const single = [
@@ -164,7 +146,59 @@ const numberToWords = (amount: number) => {
   return result.replace(/\s+/g, " ").trim();
 };
 
-const LOGO_URL = logo;
+// Simple GST Info Section - Only shows essential user GST details
+const UserGstInfoSection: React.FC<{
+  gstDetails: any;
+  invoiceNumber: string;
+  dated: string;
+  bookingId: string;
+}> = ({ gstDetails, invoiceNumber, dated, bookingId }) => {
+  const gstNumber = gstDetails.gstNumber || gstDetails.gstin || "";
+  const legalName = gstDetails.legalName || gstDetails.companyName || "";
+  
+  if (!gstNumber || !legalName) return null;
+
+  return (
+    <Box sx={{ 
+      mb: 3, 
+      p: 2, 
+      backgroundColor: "#f5f5f5", 
+      borderRadius: "4px",
+      fontSize: "11px" 
+    }}>
+      <Grid container spacing={1}>
+        <Grid item xs={6} sm={3}>
+          <Typography sx={{ fontWeight: 700 }}>Booking ID</Typography>
+          <Typography>{bookingId || "-"}</Typography>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Typography sx={{ fontWeight: 700 }}>Invoice No.</Typography>
+          <Typography>{invoiceNumber}</Typography>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Typography sx={{ fontWeight: 700 }}>Date</Typography>
+          <Typography>{dated}</Typography>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Typography sx={{ fontWeight: 700 }}>Place of Supply</Typography>
+          <Typography>Odisha</Typography>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Typography sx={{ fontWeight: 700 }}>GSTIN</Typography>
+          <Typography>{gstNumber}</Typography>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Typography sx={{ fontWeight: 700 }}>Company Legal Name</Typography>
+          <Typography>{legalName}</Typography>
+        </Grid>
+        <Grid item xs={12}>
+          <Typography sx={{ fontWeight: 700 }}>Company Address</Typography>
+          <Typography>{gstDetails.address || gstDetails.companyAddress || ""}</Typography>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
 
 const BookingDetails: React.FC = () => {
   const { id } = useParams();
@@ -216,11 +250,9 @@ const BookingDetails: React.FC = () => {
     if (!invoiceRef.current) return;
     setGeneratingPdf(true);
     try {
-      // Create a clone of the invoice element for PDF generation
       const invoiceElement = invoiceRef.current;
       const clone = invoiceElement.cloneNode(true) as HTMLElement;
       
-      // Apply specific styles for PDF
       clone.style.width = "800px";
       clone.style.margin = "0 auto";
       clone.style.padding = "20px";
@@ -228,7 +260,6 @@ const BookingDetails: React.FC = () => {
       clone.style.color = "black";
       clone.style.fontFamily = "'Arial', sans-serif";
       
-      // Temporarily add to document for rendering
       clone.style.position = "fixed";
       clone.style.left = "-9999px";
       clone.style.top = "0";
@@ -245,7 +276,6 @@ const BookingDetails: React.FC = () => {
         windowHeight: clone.scrollHeight
       });
 
-      // Remove the clone
       document.body.removeChild(clone);
 
       const imgData = canvas.toDataURL("image/png", 1.0);
@@ -296,12 +326,28 @@ const BookingDetails: React.FC = () => {
   const finalAmount = round2(normalizeAmountToRupees(booking.amountPaid ?? booking.amount ?? 0));
   const breakdown = calculateInvoiceBreakdown(finalAmount);
 
+  // Get GST details from booking object - handle both camelCase and PascalCase
+  const gstDetails = booking.gstDetail || booking.GstDetail || {};
+  const gstNumber = gstDetails.gstNumber || gstDetails.gstin || "";
+  const legalName = gstDetails.legalName || gstDetails.companyName || "";
+  const gstAddress = gstDetails.address || gstDetails.companyAddress || "";
+  
+  // Check if we have GST details
+  const hasGstDetails = gstNumber && legalName;
+
   const invoiceNumber = booking.invoiceNo || `HUTS-${booking.id}`;
   const dated = booking.createdAt 
     ? new Date(booking.createdAt).toLocaleDateString("en-IN")
     : new Date().toLocaleDateString("en-IN");
   const amountInWords = booking.amountInWords || numberToWords(breakdown.finalAmount);
-  const logoUrl =  "https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png";
+  const logoUrl = "https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png";
+
+  // Company information (HUTS4U company info)
+  const companyInfo = {
+    name: "HUTS4U",
+    address: "Ground Floor, Plot No. 370/10537, New Pokhran Village, Chandrasekharpur, Bhubaneswar, Odisha – 751016, India",
+    gstin: "21AASFH3550L1Z7"
+  };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -332,6 +378,16 @@ const BookingDetails: React.FC = () => {
                   <Typography sx={{ mb: 1 }}>
                     <strong>Booking ID:</strong> {booking.id}
                   </Typography>
+                  {hasGstDetails && (
+                    <>
+                      <Typography sx={{ mb: 1 }}>
+                        <strong>Company Name:</strong> {legalName}
+                      </Typography>
+                      <Typography sx={{ mb: 1 }}>
+                        <strong>GSTIN:</strong> {gstNumber}
+                      </Typography>
+                    </>
+                  )}
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Typography sx={{ mb: 1 }}>
@@ -343,6 +399,11 @@ const BookingDetails: React.FC = () => {
                   <Typography sx={{ mb: 1 }}>
                     <strong>Status:</strong> {booking.status || "Confirmed"}
                   </Typography>
+                  {hasGstDetails && gstAddress && (
+                    <Typography sx={{ mb: 1 }}>
+                      <strong>Company Address:</strong> {gstAddress.substring(0, 50)}...
+                    </Typography>
+                  )}
                 </Grid>
               </Grid>
 
@@ -354,6 +415,9 @@ const BookingDetails: React.FC = () => {
                 </Typography>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: color.firstColor }}>
                   {formatCurrency(finalAmount)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {hasGstDetails ? "GST Invoice" : "Regular Invoice"}
                 </Typography>
               </Box>
 
@@ -425,6 +489,31 @@ const BookingDetails: React.FC = () => {
                 </Typography>
               </Box>
               
+              {hasGstDetails && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                    GST Details
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Company Name
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {legalName}
+                    </Typography>
+                  </Box>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      GSTIN
+                    </Typography>
+                    <Typography variant="body2">
+                      {gstNumber}
+                    </Typography>
+                  </Box>
+                </>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -450,33 +539,30 @@ const BookingDetails: React.FC = () => {
             {/* Header */}
             <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
               <Box sx={{ flex: 1 }}>
-               
-                  <img
-                    src="https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png"
-                    alt="HUTS4U logo"
-                    crossOrigin="anonymous"
-                    style={{ 
-                      maxHeight: "60px", 
-                      objectFit: "contain", 
-                      marginBottom: "8px" 
-                    }}
-                  />
-               
+                <img
+                  src={logoUrl}
+                  alt="HUTS4U logo"
+                  crossOrigin="anonymous"
+                  style={{ 
+                    maxHeight: "60px", 
+                    objectFit: "contain", 
+                    marginBottom: "8px" 
+                  }}
+                />
                 <Typography variant="h6" sx={{ fontWeight: 800, fontSize: "16px" }}>
-                  HUTS4U
+                  {companyInfo.name}
                 </Typography>
                 <Typography sx={{ fontSize: "11px", lineHeight: 1.2, maxWidth: "200px" }}>
-                  Ground Floor, Plot No. 370/10537, New Pokhran Village, 
-                  Chandrasekharpur, Bhubaneswar, Odisha – 751016, India
+                  {companyInfo.address}
                 </Typography>
                 <Typography sx={{ fontSize: "11px", mt: 1 }}>
-                  GSTIN/UIN: 21AASFH3550L1Z7
+                  GSTIN/UIN: {companyInfo.gstin}
                 </Typography>
               </Box>
 
               <Box sx={{ textAlign: "right", flex: 1 }}>
                 <Typography sx={{ fontWeight: 700, fontSize: "14px" }}>
-                  TAX INVOICE
+                  {hasGstDetails ? "TAX INVOICE" : "INVOICE"}
                 </Typography>
                 <Typography sx={{ fontSize: "12px", mt: 1 }}>
                   <strong>Invoice No:</strong> {invoiceNumber}
@@ -492,16 +578,50 @@ const BookingDetails: React.FC = () => {
 
             <Divider sx={{ my: 2, borderWidth: 1 }} />
 
-            {/* Invoice Content */}
+            {/* User GST Information Section - Only show basic user GST details */}
+            {hasGstDetails && (
+              <>
+                <UserGstInfoSection 
+                  gstDetails={gstDetails}
+                  invoiceNumber={invoiceNumber}
+                  dated={dated}
+                  bookingId={booking.id}
+                />
+                <Divider sx={{ my: 2 }} />
+              </>
+            )}
+
+            {/* Bill To Section */}
             <Box sx={{ mb: 3 }}>
+              <Typography sx={{ fontSize: "12px", fontWeight: 700, mb: 1 }}>
+                Bill To:
+              </Typography>
               <Typography sx={{ fontSize: "12px", mb: 1 }}>
-                <strong>Bill To:</strong> {UserName}
+                {UserName}
               </Typography>
-               <Typography sx={{ fontSize: "12px", mb: 1 }}>
-                <strong>GSTIN/UIN:</strong> ________________
-              </Typography>
+              {hasGstDetails && (
+                <>
+                  <Typography sx={{ fontSize: "12px", mb: 1 }}>
+                    <strong>GSTIN/UIN:</strong> {gstNumber}
+                  </Typography>
+                  <Typography sx={{ fontSize: "12px", mb: 1 }}>
+                    <strong>Company:</strong> {legalName}
+                  </Typography>
+                  {gstAddress && (
+                    <Typography sx={{ fontSize: "12px", mb: 1 }}>
+                      <strong>Address:</strong> {gstAddress}
+                    </Typography>
+                  )}
+                </>
+              )}
               <Typography sx={{ fontSize: "12px" }}>
                 <strong>Property:</strong> {booking.hotelName || booking.propertyName || "-"}
+              </Typography>
+              <Typography sx={{ fontSize: "12px" }}>
+                <strong>Check-in:</strong> {booking.checkInDate ?? "-"} {booking.checkInTime ?? ""}
+              </Typography>
+              <Typography sx={{ fontSize: "12px" }}>
+                <strong>Check-out:</strong> {booking.checkOutDate ?? "-"} {booking.checkOutTime ?? ""}
               </Typography>
             </Box>
 
@@ -608,79 +728,77 @@ const BookingDetails: React.FC = () => {
               </table>
             </Box>
 
-            {/* GST Summary - Only 996111 line as requested */}
-           {/* GST Summary - Only 996111 line as requested */}
-<Box sx={{ mb: 3, overflowX: 'auto' }}>
-  <Typography sx={{ fontSize: "12px", fontWeight: 700, mb: 1 }}>
-    GST Summary:
-  </Typography>
-  <Box sx={{ 
-    minWidth: '650px', // Minimum width to maintain table structure
-    '@media (max-width: 600px)': {
-      minWidth: '650px' // Force horizontal scroll on mobile
-    }
-  }}>
-    <table style={{ 
-      width: "100%", 
-      borderCollapse: "collapse",
-      fontSize: "11px"
-    }}>
-      <thead>
-        <tr style={{ backgroundColor: "#f5f5f5" }}>
-          <th style={{ border: "1px solid #ddd", padding: "6px", whiteSpace: 'nowrap' }}>HSN/SAC</th>
-          <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>Taxable Value</th>
-          <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>CGST Rate</th>
-          <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>CGST Amt</th>
-          <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>SGST Rate</th>
-          <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>SGST Amt</th>
-          <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>Total Tax</th>
-        </tr>
-      </thead>
-      <tbody>
-        {/* Only 996111 line as requested */}
-        <tr>
-          <td style={{ border: "1px solid #ddd", padding: "6px", whiteSpace: 'nowrap' }}>99611</td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceCharges)}
-          </td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
-            9%
-          </td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceCGST)}
-          </td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
-            9%
-          </td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceSGST)}
-          </td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceCGST + breakdown.serviceSGST)}
-          </td>
-        </tr>
-        
-        <tr style={{ backgroundColor: "#f0f8ff" }}>
-          <td style={{ border: "1px solid #ddd", padding: "6px", fontWeight: 700, whiteSpace: 'nowrap' }}>Total</td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceCharges)}
-          </td>
-          <td></td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceCGST)}
-          </td>
-          <td></td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceSGST)}
-          </td>
-          <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
-            {formatCurrency(breakdown.serviceCGST + breakdown.serviceSGST)}
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </Box>
-</Box>
+            {/* GST Summary - Show in BOTH GST and non-GST invoices (This is HUTS4U's GST) */}
+            <Box sx={{ mb: 3, overflowX: 'auto' }}>
+              <Typography sx={{ fontSize: "12px", fontWeight: 700, mb: 1 }}>
+                GST Summary:
+              </Typography>
+              <Box sx={{ 
+                minWidth: '650px',
+                '@media (max-width: 600px)': {
+                  minWidth: '650px'
+                }
+              }}>
+                <table style={{ 
+                  width: "100%", 
+                  borderCollapse: "collapse",
+                  fontSize: "11px"
+                }}>
+                  <thead>
+                    <tr style={{ backgroundColor: "#f5f5f5" }}>
+                      <th style={{ border: "1px solid #ddd", padding: "6px", whiteSpace: 'nowrap' }}>HSN/SAC</th>
+                      <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>Taxable Value</th>
+                      <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>CGST Rate</th>
+                      <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>CGST Amt</th>
+                      <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>SGST Rate</th>
+                      <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>SGST Amt</th>
+                      <th style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>Total Tax</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", whiteSpace: 'nowrap' }}>99611</td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceCharges)}
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
+                        9%
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceCGST)}
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
+                        9%
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceSGST)}
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceCGST + breakdown.serviceSGST)}
+                      </td>
+                    </tr>
+                    
+                    <tr style={{ backgroundColor: "#f0f8ff" }}>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", fontWeight: 700, whiteSpace: 'nowrap' }}>Total</td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceCharges)}
+                      </td>
+                      <td></td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceCGST)}
+                      </td>
+                      <td></td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceSGST)}
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {formatCurrency(breakdown.serviceCGST + breakdown.serviceSGST)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </Box>
+            </Box>
 
             {/* Amount in Words */}
             <Box sx={{ mb: 3, p: 2, backgroundColor: "#f9f9f9", borderRadius: "4px" }}>
@@ -705,7 +823,7 @@ const BookingDetails: React.FC = () => {
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
                 <Box>
                   <Typography sx={{ fontSize: "10px", color: "#666" }}>
-                    For HUTS4U
+                    For {companyInfo.name}
                   </Typography>
                   <Typography sx={{ fontSize: "10px", color: "#666", mt: 2 }}>
                     This is a Computer Generated Invoice
@@ -723,7 +841,9 @@ const BookingDetails: React.FC = () => {
           
           <Box sx={{ mt: 3, textAlign: "center" }}>
             <Typography variant="caption" color="text.secondary">
-              This preview shows how the invoice will appear in the PDF
+              {hasGstDetails 
+                ? "GST Invoice Preview - Shows how the GST invoice will appear in the PDF" 
+                : "Regular Invoice Preview - Shows how the invoice will appear in the PDF"}
             </Typography>
           </Box>
         </Grid>

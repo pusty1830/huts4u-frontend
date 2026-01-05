@@ -55,7 +55,7 @@ import {
   RoomAmenities,
   StyledLabel,
 } from '../components/style';
-import { MAPBOX_ACCESS_TOKEN } from '../services/Secret';
+import { CDN_URL, MAPBOX_ACCESS_TOKEN } from '../services/Secret';
 import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories } from '../services/services';
 
 /**
@@ -283,6 +283,16 @@ const getInventoryPriceForDate = (room: any, inventoryData: any[], checkDate: st
 };
 
 const HotelDetails: React.FC = () => {
+  const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+const CDN_BASE_URL = CDN_URL; 
+
+const toCdn = (url?: string) => {
+  if (!url) return "/default-hotel.jpg";
+  return url.includes(S3_BASE_URL)
+    ? url.replace(S3_BASE_URL, CDN_BASE_URL)
+    : url;
+};
+
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
 
@@ -1949,7 +1959,7 @@ const HotelDetails: React.FC = () => {
                             borderRadius: "12px",
                             width: { xs: "100%", md: "250px" },
                           }}
-                          image={room.roomImages}
+                          image={toCdn(room.roomImages)}
                           alt={room.roomCategory}
                         />
 

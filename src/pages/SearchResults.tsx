@@ -48,6 +48,7 @@ import {
 import SearchSection from "./Home Section/SearchSection";
 import dayjs from "dayjs";
 import { Helmet } from "react-helmet-async";
+import { CDN_URL } from "../services/Secret";
 
 // Pagination constants
 const ITEMS_PER_PAGE = 5;
@@ -493,6 +494,16 @@ const HotelCard = ({
   hotelRatings?: any[];
   inventoryData?: any[];
 }) => {
+  const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+const CDN_BASE_URL = CDN_URL
+
+const toCdn = (url?: string) => {
+  if (!url) return "/default-hotel.jpg";
+  return url.includes(S3_BASE_URL)
+    ? url.replace(S3_BASE_URL, CDN_BASE_URL)
+    : url;
+};
+
   const navigate = useNavigate();
   const maxAmenities = isMobile ? 2 : 4;
   const visibleAmenities = hotel?.rooms?.[0]?.amenities?.slice(0, maxAmenities) || [];
@@ -679,7 +690,7 @@ const HotelCard = ({
             opacity: isAvailable ? 1 : 0.7, 
             "&:hover": { transform: isAvailable ? "scale(1.05)" : "none" } 
           }} 
-          image={hotel?.propertyImages?.[0] || "https://via.placeholder.com/400x250?text=No+Image"} 
+          image={toCdn(hotel?.propertyImages?.[0] || "https://via.placeholder.com/400x250?text=No+Image")} 
           alt={hotel?.propertyName} 
           loading="lazy" 
         />

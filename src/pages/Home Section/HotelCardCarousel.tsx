@@ -1,31 +1,26 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import dayjs from "dayjs";
+import { LocationOn, Person, Block, Star } from "@mui/icons-material";
+import {
+  Box,
+  Card,
+  CardContent,
+  CardMedia,
+  Rating,
+  Typography,
+  Tooltip,
+} from "@mui/material";
 import Slider from "react-slick";
-
-import LocationOnIcon from "@mui/icons-material/LocationOn";
-import PersonIcon from "@mui/icons-material/Person";
-import BlockIcon from "@mui/icons-material/Block";
-import StarIcon from "@mui/icons-material/Star";
-
-import Box from "@mui/material/Box";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
-import CardMedia from "@mui/material/CardMedia";
-import Rating from "@mui/material/Rating";
-import Typography from "@mui/material/Typography";
-import Tooltip from "@mui/material/Tooltip";
-
 import color from "../../components/color";
 import { CustomNextArrow, useScreenSize } from "../../components/style";
-
+import { useState, useEffect } from "react";
 import {
   getAllHotels,
   getMyAllHotelswithBelongsTo,
   getAllRatings,
-  getAllInventories,
+  getAllInventories
 } from "../../services/services";
-
+import dayjs from "dayjs";
+import { useNavigate } from "react-router-dom";
+import { CDN_URL } from "../../services/Secret";
 
 // 💰 Price Calculation
 export const calculatePriceBreakdown = (basePrice: number) => {
@@ -70,6 +65,19 @@ export const calculatePriceBreakdown = (basePrice: number) => {
     finalPrice,
   };
 };
+
+const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+const CDN_BASE_URL = CDN_URL; // replace with real
+
+const toCdn = (url?: string) => {
+  if (!url) return "/default-hotel.jpg";
+
+  // Replace ONLY the domain, keep full path
+  return url.includes(S3_BASE_URL)
+    ? url.replace(S3_BASE_URL, CDN_BASE_URL)
+    : url;
+};
+
 
 // Function to calculate average rating
 const calculateAverageRating = (ratings: any[]) => {
@@ -728,7 +736,7 @@ const HotelCardCarousel = () => {
                         gap: 0.5,
                       }}
                     >
-                      <BlockIcon sx={{ fontSize: 16 }} />
+                      <Block sx={{ fontSize: 16 }} />
                       {inventoryStatus.status.toUpperCase()}
                     </Typography>
                   </Tooltip>
@@ -753,7 +761,7 @@ const HotelCardCarousel = () => {
                       gap: 0.5,
                     }}
                   >
-                    <StarIcon sx={{ fontSize: 14 }} />
+                    <Star sx={{ fontSize: 14 }} />
                     TOP RATED
                   </Typography>
                 )}
@@ -783,7 +791,7 @@ const HotelCardCarousel = () => {
                   <CardMedia
                     component="img"
                     height="200"
-                    image={hotel.propertyImages?.[0] || "/default-hotel.jpg"}
+                    image={toCdn(hotel.propertyImages?.[0])}
                     alt={hotel.propertyName}
                     sx={{ 
                       objectFit: "cover",
@@ -908,7 +916,7 @@ const HotelCardCarousel = () => {
                         width: '50%'
                       }}
                     >
-                      <LocationOnIcon
+                      <LocationOn
                         style={{ fontSize: "18px", paddingRight: "4px" }}
                       />
                       {hotel.city || "City N/A"}
@@ -924,7 +932,7 @@ const HotelCardCarousel = () => {
                         width: '50%'
                       }}
                     >
-                      <PersonIcon
+                      <Person
                         style={{ fontSize: "18px", paddingRight: "4px" }}
                       />
                       {hotel.rooms?.[0]?.standardRoomOccupancy || 2}

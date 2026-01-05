@@ -21,6 +21,7 @@ import {
 } from "@mui/material";
 import color from "./color";
 import { useState } from "react";
+import { CDN_URL } from "../services/Secret";
 
 export const BoxStyle = {
   p: 2,
@@ -253,8 +254,26 @@ interface ImageGridProps {
 }
 
 export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
+  const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+  const CDN_BASE_URL = CDN_URL; 
+
+  const toCdn = (url?: string) => {
+    if (!url) return "/default-hotel.jpg";
+    return url.includes(S3_BASE_URL)
+      ? url.replace(S3_BASE_URL, CDN_BASE_URL)
+      : url;
+  };
+
   const maxImages = Math.min(propertyImages.length, 7);
-  const displayImages = propertyImages.slice(0, maxImages);
+
+  // ✅ CDN images for grid
+  const displayImages = propertyImages
+    .slice(0, maxImages)
+    .map((img) => toCdn(img));
+
+  // ✅ CDN images for modal
+  const allImages = propertyImages.map((img) => toCdn(img));
+
   const hasMore = propertyImages.length > 7;
   const [open, setOpen] = useState(false);
   const isMobile = useMediaQuery("(max-width: 900px)");
@@ -268,7 +287,6 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
         height: "300px",
         gridTemplateColumns:
           displayImages.length > 5 ? "40% 20% 20% 20%" : "60% 20% 20%",
-        gridTemplateRows: "auto",
         "& img": {
           width: "100%",
           height: "100%",
@@ -278,48 +296,44 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
         position: "relative",
       }}
     >
+      {/* Main Image */}
       <Box
         onClick={() => setOpen(true)}
         sx={{
           gridColumn: { xs: "auto", md: "span 1" },
           gridRow: { xs: "auto", md: "span 2" },
           height: "300px",
-          width: { xs: "100%", md: "auto" },
-          display: { xs: "block", md: "grid" },
         }}
       >
-        <img loading="lazy" style={{height:'300px'}} src={displayImages[0]} alt="Main" />
+        <img
+          loading="lazy"
+          style={{ height: "300px" }}
+          src={displayImages[0]}
+          alt="Main"
+        />
       </Box>
 
+      {/* Side Images */}
       {!isMobile &&
         displayImages.slice(1).map((src, index) => {
           if (index % 2 === 0) {
             return (
               <Box
-                onClick={() => setOpen(true)}
                 key={index}
-                display="grid"
+                onClick={() => setOpen(true)}
                 sx={{
+                  display: "grid",
                   gridTemplateRows: "146px 146px",
                   height: "300px",
                   gap: "8px",
                 }}
               >
-                <img
-                  src={src}
-                  alt={`Image ${index + 2}`}
-                  style={{ height: "100%", width: "100%", objectFit: "cover" }}
-                />
+                <img src={src} alt={`Image ${index + 2}`} />
 
                 {displayImages[index + 2] && (
                   <img
                     src={displayImages[index + 2]}
                     alt={`Image ${index + 3}`}
-                    style={{
-                      height: "100%",
-                      width: "100%",
-                      objectFit: "cover",
-                    }}
                   />
                 )}
               </Box>
@@ -328,6 +342,7 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
           return null;
         })}
 
+      {/* More badge */}
       {hasMore && (
         <Box
           sx={{
@@ -338,11 +353,9 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
             color: "white",
             borderRadius: "8px",
             p: 1,
-            textAlign: "center",
             cursor: "pointer",
-            boxShadow:
-              "-4px -4px 10px rgba(32, 32, 32, 0.28) inset, 0px 0px 10px rgba(32, 32, 32, 0.28)",
           }}
+          onClick={() => setOpen(true)}
         >
           <Typography variant="body2">
             + {isMobile ? propertyImages.length - 1 : propertyImages.length - 7} More
@@ -350,6 +363,7 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
         </Box>
       )}
 
+      {/* Modal */}
       <Modal open={open} onClose={() => setOpen(false)}>
         <Box
           sx={{
@@ -360,7 +374,6 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
             width: "80%",
             height: "80%",
             bgcolor: "white",
-            boxShadow: 24,
             p: 2,
             overflowY: "auto",
             borderRadius: "8px",
@@ -372,24 +385,20 @@ export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
 
           <Close
             onClick={() => setOpen(false)}
-            sx={{
-              position: "absolute",
-              top: 10,
-              right: 10,
-            }}
-          ></Close>
+            sx={{ position: "absolute", top: 10, right: 10 }}
+          />
+
           <Box
             display="grid"
             gap={2}
-            sx={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-            }}
+            sx={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
           >
-            {propertyImages.map((img, index) => (
+            {allImages.map((img, index) => (
               <img
                 key={index}
                 src={img}
                 alt={`Image ${index + 1}`}
+                loading="lazy"
                 style={{
                   width: "100%",
                   height: "150px",
