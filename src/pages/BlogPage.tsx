@@ -1,6 +1,6 @@
 import React from "react";
 import { blogPosts } from "../components/blog";
-import { Link, useLocation,LinkProps } from "react-router-dom";
+import { Link, useLocation, LinkProps } from "react-router-dom";
 
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -132,9 +132,20 @@ const BlogPage: React.FC = () => {
   return (
     <>
       {/* Page Title */}
-      <Helmet>
-        <title>{isHomepage ? "Latest Travel Tips | Huts4u Blog" : "Huts4u Blog | Hourly Hotel Guides & Travel Tips"}</title>
-      </Helmet>
+      {!isHomepage && (
+        <Helmet>
+          <title>Huts4u Blog | Hourly Hotel Guides & Travel Tips</title>
+          <meta
+            name="description"
+            content="Read expert travel tips, hourly hotel guides, and smart stay ideas from Huts4u."
+          />
+          <meta
+            name="keywords"
+            content="hourly hotels, hotel booking tips, travel guide Bhubaneswar, Huts4u blog"
+          />
+        </Helmet>
+      )}
+
 
       <Container maxWidth="lg" sx={{ py: { xs: 4, md: 8 } }}>
         {/* Homepage Section Title */}

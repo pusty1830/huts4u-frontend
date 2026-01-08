@@ -1002,6 +1002,32 @@ const toCdn = (url?: string) => {
         position: "relative",
       }}
     >
+       <Helmet>
+    <title>{hotel.propertyName} in Bhubaneswar {bookingType === "hourly" ? "Hourly" : "Overnight"} Stay in Bhubaneswar by Huts4U</title>
+    <meta 
+      name="description" 
+      content={`Book ${hotel.propertyName} in Bhubaneswar for safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays with Huts4U. Perfect for short breaks, layovers, and flexible check-ins.`}
+    />
+    {/* Open Graph tags for social media */}
+    <meta property="og:title" content={`${hotel.propertyName} in Bhubaneswar ${bookingType === "hourly" ? "Hourly" : "Overnight"} Stay by Huts4U`} />
+    <meta property="og:description" content={`Book ${hotel.propertyName} for safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays.`} />
+    {hotel.propertyImages && hotel.propertyImages[0] && (
+      <meta property="og:image" content={toCdn(hotel.propertyImages[0])} />
+    )}
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={window.location.href} />
+    
+    {/* Twitter Card tags */}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={`${hotel.propertyName} - ${bookingType === "hourly" ? "Hourly" : "Overnight"} Stay in Bhubaneswar`} />
+    <meta name="twitter:description" content={`Book safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays at ${hotel.propertyName} with Huts4U.`} />
+    {hotel.propertyImages && hotel.propertyImages[0] && (
+      <meta name="twitter:image" content={toCdn(hotel.propertyImages[0])} />
+    )}
+    
+    {/* Additional meta tags */}
+    <meta name="keywords" content={`${hotel.propertyName}, Bhubaneswar hotel, ${bookingType === "hourly" ? "hourly hotel" : "overnight stay"}, short stay, affordable hotel, Huts4U`} />
+  </Helmet>
 
 
       <Box
