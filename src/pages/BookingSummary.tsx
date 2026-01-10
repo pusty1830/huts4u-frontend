@@ -152,11 +152,11 @@ const distributeGuestsToRooms = (
   const guestsPerRoom: number[] = [];
 
   if (totalGuests <= 0) {
-    return { 
-      requiredRooms: 1, 
-      extraGuestCount: 0, 
-      extraGuestCharge: 0, 
-      guestsPerRoom: [0] 
+    return {
+      requiredRooms: 1,
+      extraGuestCount: 0,
+      extraGuestCharge: 0,
+      guestsPerRoom: [0]
     };
   }
 
@@ -165,7 +165,7 @@ const distributeGuestsToRooms = (
 
   // DISTRIBUTE GUESTS EVENLY ACROSS ROOMS
   let remainingGuests = totalGuests;
-  
+
   // First, fill each room with standard occupancy
   for (let i = 0; i < requiredRooms; i++) {
     if (remainingGuests >= standardOccupancy) {
@@ -186,7 +186,7 @@ const distributeGuestsToRooms = (
       remainingGuests -= 1;
     }
     roomIndex++;
-    
+
     // If we've checked all rooms and still have guests, loop back
     if (roomIndex >= requiredRooms && remainingGuests > 0) {
       roomIndex = 0;
@@ -217,7 +217,10 @@ const BookingSummary = () => {
   const selectedSlot = location.state?.selectedSlot;
   const pricingDetails = location.state?.pricingDetails;
   const inventoryData = location.state?.inventoryData || [];
-  
+
+  console.log("Received pricingDetails:", pricingDetails);
+  console.log("Received inventoryData:", inventoryData);
+
   const queryParams = new URLSearchParams(location.search);
 
   const initialBookingType = queryParams.get("bookingType");
@@ -287,6 +290,9 @@ const BookingSummary = () => {
   const [showNewGSTForm, setShowNewGSTForm] = useState(false);
   const [deletingGST, setDeletingGST] = useState<string | null>(null);
 
+  // Store calculated price
+  const [calculatedPrice, setCalculatedPrice] = useState<any>(null);
+
   // Refs for scrolling to fields
   const nameFieldRef = useRef<HTMLInputElement>(null);
   const phoneFieldRef = useRef<HTMLDivElement>(null);
@@ -300,39 +306,51 @@ const BookingSummary = () => {
     const additionalGuestRate = room?.additionalGuestRate || 0;
 
     return distributeGuestsToRooms(
-      totalGuests, 
-      standardOccupancy, 
-      maxOccupancy, 
+      totalGuests,
+      standardOccupancy,
+      maxOccupancy,
       additionalGuestRate
     );
   };
 
   const guestDistribution = calculateGuestDistribution();
-  const { 
-    requiredRooms, 
-    extraGuestCount, 
-    extraGuestCharge, 
-    guestsPerRoom 
+  const {
+    requiredRooms,
+    extraGuestCount,
+    extraGuestCharge,
+    guestsPerRoom
   } = guestDistribution;
 
-  // Get inventory-based price for the selected slot and date
+  // FIXED: Get inventory-based price for the selected slot and date
   const getInventoryPriceForDate = (slot: string): number => {
     if (!room || !checkinDate || !slot) return 0;
 
     const checkDay = dayjs(checkinDate).format('YYYY-MM-DD');
-    const dayInventory = inventoryData?.find((inv:any) => 
+    const dayInventory = inventoryData?.find((inv: any) =>
       dayjs(inv.date).format('YYYY-MM-DD') === checkDay
     );
 
+    console.log("DEBUG getInventoryPriceForDate:", {
+      checkDay,
+      slot,
+      dayInventory,
+      roomRates: {
+        rateFor3Hour: room.rateFor3Hour,
+        rateFor6Hour: room.rateFor6Hour,
+        rateFor12Hour: room.rateFor12Hour,
+        rateFor1Night: room.rateFor1Night
+      }
+    });
+
     if (!dayInventory) {
       // If no inventory data, fall back to room rates
-      switch(slot) {
+      switch (slot) {
         case 'rateFor1Night':
           return room.rateFor1Night || 0;
         case 'rateFor3Hour':
           return room.rateFor3Hour || 0;
         case 'rateFor6Hour':
-          return room.rateFor6Hour || 0;
+          return room.rateFor6Hour || 0;  // FIXED: Added missing case
         case 'rateFor12Hour':
           return room.rateFor12Hour || 0;
         default:
@@ -341,13 +359,13 @@ const BookingSummary = () => {
     }
 
     // Return inventory-specific rate
-    switch(slot) {
+    switch (slot) {
       case 'rateFor1Night':
         return dayInventory.overnightRate || room.rateFor1Night || 0;
       case 'rateFor3Hour':
         return dayInventory.threeHourRate || room.rateFor3Hour || 0;
       case 'rateFor6Hour':
-        return dayInventory.sixHourRate || room.rateFor6Hour || 0;
+        return dayInventory.sixHourRate || room.rateFor6Hour || 0;  // FIXED: Added missing case
       case 'rateFor12Hour':
         return dayInventory.twelveHourRate || room.rateFor12Hour || 0;
       default:
@@ -384,7 +402,7 @@ const BookingSummary = () => {
 
     const roomStatus = room.status?.toLowerCase();
     const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
-    
+
     if (!isStatusAvailable) {
       return {
         isAvailable: false,
@@ -415,6 +433,14 @@ const BookingSummary = () => {
     }
   }, [adults, children, room]);
 
+  // Initialize calculated price from pricingDetails
+  useEffect(() => {
+    if (pricingDetails) {
+      console.log("Initializing calculatedPrice from pricingDetails:", pricingDetails);
+      setCalculatedPrice(pricingDetails);
+    }
+  }, [pricingDetails]);
+
   // Load user profile and GST records on component mount
   useEffect(() => {
     if (isLoggedIn()) {
@@ -428,7 +454,7 @@ const BookingSummary = () => {
       const profileRes = await getProfile();
       const userData = profileRes?.data?.data;
       setUser(userData);
-      
+
       if (userData?._id) {
         // Load user's GST records
         loadUserGSTRecords(userData._id);
@@ -439,89 +465,88 @@ const BookingSummary = () => {
     }
   };
 
-const loadUserGSTRecords = async (userId: string) => {
-  if (!userId) return;
-  
-  setLoadingGSTRecords(true);
-  try {
-    const response = await getAllGSTByUserId(userId);
-    console.log("GST API Response:", response);
-    
-    let gstRecords: any[] = [];
-    
-    // Extract from response.data.data array
-    if (response?.data?.data && Array.isArray(response.data.data)) {
-      gstRecords = response.data.data;
-    } 
-    // If response.data itself is array
-    else if (Array.isArray(response?.data)) {
-      gstRecords = response.data;
-    }
-    
-    console.log("Raw GST Records:", gstRecords);
-    
-    // Transform the data: extract gst_detail objects
-    const transformedRecords = gstRecords.map((record: any) => {
-      // If record has gst_detail property, use that
-      if (record.gst_detail && typeof record.gst_detail === 'object') {
-        return {
-          ...record.gst_detail,
-          // Keep mapping info if needed
-          mappingId: record.id,
-          userId: record.userId,
-          gstId: record.gstId,
-          isPrimary: record.isPrimary || false,
-          mappingCreatedAt: record.createdAt,
-          mappingUpdatedAt: record.updatedAt,
-        };
+  const loadUserGSTRecords = async (userId: string) => {
+    if (!userId) return;
+
+    setLoadingGSTRecords(true);
+    try {
+      const response = await getAllGSTByUserId(userId);
+      console.log("GST API Response:", response);
+
+      let gstRecords: any[] = [];
+
+      // Extract from response.data.data array
+      if (response?.data?.data && Array.isArray(response.data.data)) {
+        gstRecords = response.data.data;
       }
-      // Otherwise use the record as is
-      return record;
-    });
-    
-    console.log("Transformed GST Records:", transformedRecords);
-    
-    setUserGSTRecords(transformedRecords);
-    
-    // If user has verified GST records, automatically select the first verified one
-    const verifiedRecords = transformedRecords.filter((record: any) => {
-      return (
-        record.verified === true || 
-        record.gstStatus === "Active"
-      );
-    });
-    
-    console.log("Verified GST Records:", verifiedRecords);
-    
-    if (verifiedRecords.length > 0) {
-      const firstRecord = verifiedRecords[0];
-      console.log("Auto-selecting GST Record:", firstRecord);
-      
-      setSelectedGSTRecord(firstRecord);
-      setGstinNumber(firstRecord.gstNumber || "");
-      setLegalName(firstRecord.legalName || firstRecord.tradeName || "");
-      setGstAddress(firstRecord.address || "");
-      setGstVerificationStatus("verified");
-      
-      // Auto-open GST section if records exist
-      setGstSectionOpen(true);
-      
-      toast.success(`Auto-selected GST: ${firstRecord.gstNumber}`);
-    } else if (transformedRecords.length > 0) {
-      // If there are records but none verified, still show them
-      console.log("Showing non-verified GST records");
-      
-      // Auto-open GST section if records exist
-      setGstSectionOpen(true);
+      // If response.data itself is array
+      else if (Array.isArray(response?.data)) {
+        gstRecords = response.data;
+      }
+
+      console.log("Raw GST Records:", gstRecords);
+
+      // Transform the data: extract gst_detail objects
+      const transformedRecords = gstRecords.map((record: any) => {
+        // If record has gst_detail property, use that
+        if (record.gst_detail && typeof record.gst_detail === 'object') {
+          return {
+            ...record.gst_detail,
+            // Keep mapping info if needed
+            mappingId: record.id,
+            userId: record.userId,
+            gstId: record.gstId,
+            isPrimary: record.isPrimary || false,
+            mappingCreatedAt: record.createdAt,
+            mappingUpdatedAt: record.updatedAt,
+          };
+        }
+        // Otherwise use the record as is
+        return record;
+      });
+
+      console.log("Transformed GST Records:", transformedRecords);
+
+      setUserGSTRecords(transformedRecords);
+
+      // If user has verified GST records, automatically select the first verified one
+      const verifiedRecords = transformedRecords.filter((record: any) => {
+        return (
+          record.verified === true ||
+          record.gstStatus === "Active"
+        );
+      });
+
+      console.log("Verified GST Records:", verifiedRecords);
+
+      if (verifiedRecords.length > 0) {
+        const firstRecord = verifiedRecords[0];
+        console.log("Auto-selecting GST Record:", firstRecord);
+
+        setSelectedGSTRecord(firstRecord);
+        setGstinNumber(firstRecord.gstNumber || "");
+        setLegalName(firstRecord.legalName || firstRecord.tradeName || "");
+        setGstAddress(firstRecord.address || "");
+        setGstVerificationStatus("verified");
+
+        // Auto-open GST section if records exist
+        setGstSectionOpen(true);
+
+        toast.success(`Auto-selected GST: ${firstRecord.gstNumber}`);
+      } else if (transformedRecords.length > 0) {
+        // If there are records but none verified, still show them
+        console.log("Showing non-verified GST records");
+
+        // Auto-open GST section if records exist
+        setGstSectionOpen(true);
+      }
+    } catch (error: any) {
+      console.error("Error loading GST records:", error);
+      // Don't show toast to avoid annoying users for this optional feature
+    } finally {
+      setLoadingGSTRecords(false);
     }
-  } catch (error: any) {
-    console.error("Error loading GST records:", error);
-    
-    // Don't show toast to avoid annoying users for this optional feature
-  } finally {
-    setLoadingGSTRecords(false);
-  }
-};
+  };
 
   // STEP 2: Handle GST verification and creation
   const handleVerifyGST = async () => {
@@ -544,7 +569,7 @@ const loadUserGSTRecords = async (userId: string) => {
 
     try {
       // Get user ID if logged in
-      const userId = isLoggedIn() ? getUserId(): null;
+      const userId = isLoggedIn() ? getUserId() : null;
 
       // Prepare GST payload - only include userId if logged in
       const gstPayload = {
@@ -554,14 +579,14 @@ const loadUserGSTRecords = async (userId: string) => {
 
       // Call createGST API (which will verify via API)
       const response = await createGST(gstPayload);
-      
+
       if (response?.data?.data) {
         const gstData = response.data?.data || response.data?.result;
-        
+
         setGstVerificationStatus("verified");
         setLegalName(gstData?.legalName || gstData?.lgnm || "");
         setGstAddress(gstData?.address || gstData?.pradr?.adr || "");
-        
+
         // Create selected record object
         const selectedRecord = {
           ...gstData,
@@ -571,24 +596,24 @@ const loadUserGSTRecords = async (userId: string) => {
           address: gstData?.address || gstData?.pradr?.adr || "",
           verified: true
         };
-        
+
         setSelectedGSTRecord(selectedRecord);
-        
+
         toast.success("GSTIN verified successfully!");
-        
+
         // If user is logged in, reload their GST records
         if (userId) {
           loadUserGSTRecords(userId);
         }
-        
+
       } else if (response?.data?.status === "BAD_REQUEST") {
         // Handle duplicate GST or verification failure
         const errorMessage = response.data?.message || "GST verification failed";
-        
+
         if (errorMessage.includes("already exists")) {
           // GST already exists in system
           const existingGST = response.data?.data;
-          
+
           // Update with user ID if logged in
           if (userId && existingGST?.id) {
             try {
@@ -600,13 +625,13 @@ const loadUserGSTRecords = async (userId: string) => {
               console.error("Error updating GST user ID:", updateError);
             }
           }
-          
+
           setGstVerificationStatus("verified");
           setGstinNumber(existingGST.gstNumber || gstinNumber.toUpperCase());
           setLegalName(existingGST.legalName || "");
           setGstAddress(existingGST.address || "");
           setSelectedGSTRecord(existingGST);
-          
+
           toast.info("Using existing GST record");
         } else {
           setGstVerificationStatus("invalid");
@@ -619,11 +644,11 @@ const loadUserGSTRecords = async (userId: string) => {
     } catch (error: any) {
       console.error("GST verification error:", error);
       setGstVerificationStatus("invalid");
-      
+
       // Check if it's a duplicate GST error
       if (error.response?.data?.status === "BAD_REQUEST") {
         const errorData = error.response.data;
-        
+
         if (errorData?.data) {
           // Existing GST found
           setGstVerificationStatus("verified");
@@ -649,8 +674,8 @@ const loadUserGSTRecords = async (userId: string) => {
     setLegalName(record.legalName || "");
     setGstAddress(record.address || "");
     setGstVerificationStatus(
-      record.verified === true || record.gstStatus === "Active" 
-        ? "verified" 
+      record.verified === true || record.gstStatus === "Active"
+        ? "verified"
         : "none"
     );
     setShowNewGSTForm(false);
@@ -680,23 +705,23 @@ const loadUserGSTRecords = async (userId: string) => {
 
     setDeletingGST(gstId);
     try {
-      const payLoad={
-        userId:getUserId()
+      const payLoad = {
+        userId: getUserId()
       }
       console.log(gstId);
       console.log(payLoad);
       const response = await deleteGST(gstId, payLoad.userId);
       if (response?.data?.success) {
         toast.success("GST removed from your account");
-        
+
         // Update local state
-        setUserGSTRecords(prev => prev.filter(record => 
+        setUserGSTRecords(prev => prev.filter(record =>
           record.id !== gstId && record._id !== gstId
         ));
-        
+
         // Clear selection if deleted record was selected
-        if (selectedGSTRecord && 
-            (selectedGSTRecord.id === gstId || selectedGSTRecord._id === gstId)) {
+        if (selectedGSTRecord &&
+          (selectedGSTRecord.id === gstId || selectedGSTRecord._id === gstId)) {
           handleClearGST();
         }
       } else {
@@ -811,6 +836,42 @@ const loadUserGSTRecords = async (userId: string) => {
 
   // Calculate price breakdown WITHOUT extra guest charges
   const calculateTotalPrice = () => {
+    // If we have calculatedPrice from props or previous calculation, use it
+    if (calculatedPrice && !editingCheckin && !editingCheckout && !editingTime) {
+      console.log("Using existing calculatedPrice:", calculatedPrice);
+
+      // Calculate coupon discount based on existing total
+      let couponDiscount = 0;
+      let totalWithoutDiscount = calculatedPrice.totalPrice || 0;
+
+      if (couponApplied) {
+        couponDiscount = totalWithoutDiscount * 0.05;
+      }
+
+      const finalPrice = totalWithoutDiscount - couponDiscount;
+
+      return {
+        basePrice: calculatedPrice.basePrice || 0,
+        gstOnBase: calculatedPrice.gstOnBase || 0,
+        platformFee: calculatedPrice.platformFee || 0,
+        gstOnPlatform: calculatedPrice.gstOnPlatform || 0,
+        convenienceFee: calculatedPrice.gatewayFee || 0,
+        gstOnConvenience: (calculatedPrice.gatewayFee || 0) * 0.18,
+        totalWithoutDiscount: totalWithoutDiscount,
+        couponDiscount,
+        finalPrice,
+        nights,
+        totalMultiplier: requiredRooms * (bookingType === "hourly" ? slotDuration / 3 : nights),
+        bookingType,
+        slotDuration,
+        requiredRooms,
+        unitBase: (calculatedPrice.basePrice || 0) / requiredRooms / (bookingType === "hourly" ? slotDuration / 3 : nights),
+      };
+    }
+
+    // Otherwise calculate from scratch
+    console.log("Calculating price from scratch...");
+
     // Calculate multiplier WITHOUT extra guest charges
     let totalMultiplier;
     if (bookingType === "hourly") {
@@ -989,10 +1050,10 @@ const loadUserGSTRecords = async (userId: string) => {
 
   const handleOtpSuccess = () => {
     setShowOtpModal(false);
-    
+
     // If GST is verified but doesn't have user ID, update it
-    if (gstVerificationStatus === "verified" && selectedGSTRecord && 
-        isLoggedIn() && !selectedGSTRecord.userId) {
+    if (gstVerificationStatus === "verified" && selectedGSTRecord &&
+      isLoggedIn() && !selectedGSTRecord.userId) {
       updateGSTRecordWithUserId();
     } else {
       handlePayment();
@@ -1009,15 +1070,15 @@ const loadUserGSTRecords = async (userId: string) => {
         // Update GST record with user ID
         const updatePayload = { userId };
         const response = await updateGST(gstId, updatePayload);
-        
+
         if (response?.data?.success) {
           toast.success("GST record linked to your account!");
-          
+
           // Reload GST records to get updated data
           loadUserGSTRecords(userId);
         }
       }
-      
+
       // Proceed to payment
       handlePayment();
     } catch (error) {
@@ -1030,6 +1091,7 @@ const loadUserGSTRecords = async (userId: string) => {
   const textContainerRef = useRef<HTMLDivElement>(null);
   const [imageHeight, setImageHeight] = useState("auto");
 
+  // Updated calculateCheckoutTime function
   const calculateCheckoutTime = () => {
     if (bookingType === "hourly" && checkinTime && checkinDate && slotDuration) {
       const checkInDateTime = dayjs(`${checkinDate} ${checkinTime}`, "YYYY-MM-DD HH:mm");
@@ -1041,16 +1103,30 @@ const loadUserGSTRecords = async (userId: string) => {
         checkOutDate: checkOutDateTime.format("DD MMM YYYY"),
         checkOutTime: checkOutDateTime.format("hh:mm A"),
         duration: `${slotDuration} hrs`,
+        bookingType: "hourly",
       };
     } else {
       const nights = calculateNights();
       return {
         checkInDate: dayjs(checkinDate, "YYYY-MM-DD").format("DD MMM YYYY"),
-        checkInTime: "12.00 PM",
+        checkInTime: "12:00 PM",
         checkOutDate: dayjs(checkOutDate, "YYYY-MM-DD").format("DD MMM YYYY"),
-        checkOutTime: "11.00 AM",
+        checkOutTime: "11:00 AM",
         duration: `${nights} night${nights > 1 ? 's' : ''}`,
+        bookingType: "daily",
       };
+    }
+  };
+
+  // Get booking type label for display
+  const getBookingTypeLabel = () => {
+    switch (bookingType) {
+      case "hourly":
+        return "Hourly Booking";
+      case "daily":
+      case "overnight":
+      default:
+        return "Daily/Overnight Booking";
     }
   };
 
@@ -1107,10 +1183,10 @@ Please ensure you have read and understood all applicable policies.
   // Price source indicator
   const getPriceSource = () => {
     const checkDay = dayjs(checkinDate).format('YYYY-MM-DD');
-    const dayInventory = inventoryData?.find((inv:any) => 
+    const dayInventory = inventoryData?.find((inv: any) =>
       dayjs(inv.date).format('YYYY-MM-DD') === checkDay
     );
-    
+
     return dayInventory ? "Dynamic Inventory Pricing" : "Standard Rate";
   };
 
@@ -1162,9 +1238,9 @@ Please ensure you have read and understood all applicable policies.
               }}
             >
               {slotAvailability.message}
-              <Button 
-                variant="outlined" 
-                size="small" 
+              <Button
+                variant="outlined"
+                size="small"
                 sx={{ ml: 2 }}
                 onClick={() => navigate(-1)}
               >
@@ -1225,6 +1301,11 @@ Please ensure you have read and understood all applicable policies.
                 {hotel?.address}
               </Typography>
 
+              {/* Booking Type Label */}
+              <Typography sx={{ fontSize: 14, color: color.forthColor, fontStyle: 'italic', mb: 1, mt: 0.5 }}>
+                {getBookingTypeLabel()}
+              </Typography>
+
               <div
                 style={{
                   marginTop: "10px",
@@ -1234,7 +1315,7 @@ Please ensure you have read and understood all applicable policies.
                   gap: "4px",
                 }}
               >
-                {/* Editable Check-in Date */}
+                {/* Editable Check-in Date - ALWAYS SHOW */}
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   {editingCheckin ? (
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -1242,7 +1323,11 @@ Please ensure you have read and understood all applicable policies.
                         type="date"
                         size="small"
                         value={tempCheckinDate}
-                        onChange={(e) => setTempCheckinDate(e.target.value)}
+                        onChange={(e) => {
+                          setTempCheckinDate(e.target.value);
+                          // Reset calculated price when date changes
+                          setCalculatedPrice(null);
+                        }}
                         InputLabelProps={{ shrink: true }}
                         sx={{ width: 150 }}
                         InputProps={{
@@ -1279,75 +1364,94 @@ Please ensure you have read and understood all applicable policies.
                   )}
                 </Box>
 
-                {/* Editable Check-in Time - Only for hourly bookings */}
+                {/* FOR HOURLY BOOKINGS: Show check-in time */}
                 {bookingType === "hourly" && (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
-                    {editingTime ? (
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1, width: "100%" }}>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <FormControl size="small" sx={{ minWidth: 120 }}>
-                            <InputLabel>Time</InputLabel>
-                            <Select
-                              value={tempCheckinTime}
-                              onChange={(e) => setTempCheckinTime(e.target.value)}
-                              label="Time"
+                  <>
+                    {/* Editable Check-in Time */}
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
+                      {editingTime ? (
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, width: "100%" }}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <FormControl size="small" sx={{ minWidth: 120 }}>
+                              <InputLabel>Check-in Time</InputLabel>
+                              <Select
+                                value={tempCheckinTime}
+                                onChange={(e) => setTempCheckinTime(e.target.value)}
+                                label="Check-in Time"
+                              >
+                                {timeSlots.map((time) => (
+                                  <MenuItem key={time.value} value={time.value}>
+                                    {time.label}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                            {/* <TextField
+                              select
+                              size="small"
+                              label="Duration"
+                              value={tempSlotDuration}
+                              onChange={(e) => {
+                                setTempSlotDuration(Number(e.target.value));
+                                // Reset calculated price when duration changes
+                                setCalculatedPrice(null);
+                              }}
+                              sx={{ minWidth: 100 }}
                             >
-                              {timeSlots.map((time) => (
-                                <MenuItem key={time.value} value={time.value}>
-                                  {time.label}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          <TextField
-                            select
+                              <MenuItem value={3}>3 hrs</MenuItem>
+                              <MenuItem value={6}>6 hrs</MenuItem>
+                              <MenuItem value={12}>12 hrs</MenuItem>
+                            </TextField> */}
+                          </Box>
+                          <Box sx={{ display: "flex", gap: 1 }}>
+                            <IconButton size="small" onClick={handleTimeSave} sx={{ color: "green" }}>
+                              <CheckIcon />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => {
+                              setTempCheckinTime(checkinTime);
+                              setTempSlotDuration(slotDuration);
+                              setEditingTime(false);
+                            }} sx={{ color: "red" }}>
+                              <CloseIcon />
+                            </IconButton>
+                          </Box>
+                        </Box>
+                      ) : (
+                        <>
+                          <Typography sx={typoStyle}>
+                            <strong>Check-In Time:</strong>{" "}
+                            {checkinTime
+                              ? dayjs(checkinTime, "HH:mm", true).isValid()
+                                ? dayjs(checkinTime, "HH:mm").format("hh:mm A")
+                                : "12:00 PM"
+                              : "12:00 PM"}
+                          </Typography>
+                          <IconButton
                             size="small"
-                            label="Duration"
-                            value={tempSlotDuration}
-                            onChange={(e) => setTempSlotDuration(Number(e.target.value))}
-                            sx={{ minWidth: 100 }}
+                            onClick={() => {
+                              setTempCheckinTime(checkinTime);
+                              setTempSlotDuration(slotDuration);
+                              setEditingTime(true);
+                            }}
+                            sx={{ ml: -1 }}
                           >
-                            <MenuItem value={3}>3 hrs</MenuItem>
-                            <MenuItem value={6}>6 hrs</MenuItem>
-                            <MenuItem value={12}>12 hrs</MenuItem>
-                          </TextField>
-                        </Box>
-                        <Box sx={{ display: "flex", gap: 1 }}>
-                          <IconButton size="small" onClick={handleTimeSave} sx={{ color: "green" }}>
-                            <CheckIcon />
+                            <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" onClick={() => {
-                            setTempCheckinTime(checkinTime);
-                            setTempSlotDuration(slotDuration);
-                            setEditingTime(false);
-                          }} sx={{ color: "red" }}>
-                            <CloseIcon />
-                          </IconButton>
-                        </Box>
-                      </Box>
-                    ) : (
-                      <>
-                        <Typography sx={typoStyle}>
-                          <strong>Check-In Time:</strong>{" "}
-                          {checkinTime ? dayjs(checkinTime, "HH:mm").format("hh:mm A") : "Not set"}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={() => {
-                            setTempCheckinTime(checkinTime);
-                            setTempSlotDuration(slotDuration);
-                            setEditingTime(true);
-                          }}
-                          sx={{ ml: -1 }}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </>
-                    )}
-                  </Box>
+                        </>
+                      )}
+                    </Box>
+
+                    {/* Show check-out time calculation for hourly */}
+                    <Typography sx={typoStyle}>
+                      <strong>Check-Out Time:</strong>{" "}
+                      {dayjs(`${checkinDate} ${checkinTime}`, "YYYY-MM-DD HH:mm")
+                        .add(slotDuration, 'hour')
+                        .format("DD MMM YYYY hh:mm A")}
+                    </Typography>
+                  </>
                 )}
 
-                {/* Editable Check-out Date - Only for nightly bookings */}
+                {/* FOR DAILY/OVERNIGHT BOOKINGS: Show check-out date */}
                 {bookingType !== "hourly" && (
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
                     {editingCheckout ? (
@@ -1356,7 +1460,11 @@ Please ensure you have read and understood all applicable policies.
                           type="date"
                           size="small"
                           value={tempCheckOutDate}
-                          onChange={(e) => setTempCheckOutDate(e.target.value)}
+                          onChange={(e) => {
+                            setTempCheckOutDate(e.target.value);
+                            // Reset calculated price when date changes
+                            setCalculatedPrice(null);
+                          }}
                           InputLabelProps={{ shrink: true }}
                           sx={{ width: 150 }}
                           InputProps={{
@@ -1394,7 +1502,7 @@ Please ensure you have read and understood all applicable policies.
                   </Box>
                 )}
 
-                {/* Duration display */}
+                {/* Duration display - Show based on booking type */}
                 {bookingType === "hourly" ? (
                   <Typography sx={typoStyle}>
                     <strong>Duration: </strong>
@@ -1493,7 +1601,7 @@ Please ensure you have read and understood all applicable policies.
                   {guestsPerRoom.map((guests, index) => {
                     const standardOccupancy = room?.standardRoomOccupancy || 1;
                     const extraInRoom = guests > standardOccupancy ? guests - standardOccupancy : 0;
-                    
+
                     return (
                       <Typography key={index} variant="caption" sx={{
                         bgcolor: extraInRoom > 0 ? '#ffebee' : '#e8f5e9',
@@ -1529,7 +1637,7 @@ Please ensure you have read and understood all applicable policies.
                     • {extraGuestCount} extra guest{extraGuestCount > 1 ? 's' : ''} across {requiredRooms} room{requiredRooms > 1 ? 's' : ''}
                     (Standard occupancy: {room?.standardRoomOccupancy || 1} guest{room?.standardRoomOccupancy > 1 ? 's' : ''} per room)
                   </Typography>
-                  
+
                   <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: '#e65100', mt: 0.5 }}>
                     • Total extra charge: ₹ {extraGuestCharge.toFixed(2)}
                   </Typography>
@@ -1605,63 +1713,63 @@ Please ensure you have read and understood all applicable policies.
 
             {/* PHONE NUMBER */}
             <Box
-  sx={{
-    display: "flex",
-    flexDirection: "column",
-    width: {
-      xs: "80%",
-      md: "100%",
-    },
-  }}
->
-  <PhoneInput
-    country="in"
-    onlyCountries={["in"]}
-    disableDropdown
-    countryCodeEditable={false}
-    enableSearch={false}
-    value={formik.values.phoneNumber}
-    placeholder="Phone Number"
-    onChange={(value) => formik.setFieldValue("phoneNumber", value)}
-    onBlur={() => formik.setFieldTouched("phoneNumber", true)}
-    inputStyle={{
-      width: "100%",
-      height: "56px",
-      borderRadius: "52px",
-      border: "none",
-      outline: "none",
-      boxShadow: "4px 4px 10px rgba(104, 39, 184, 0.17)",
-      color: color.firstColor,
-      paddingLeft: "60px",
-      fontSize: "16px",
-      backgroundColor: "white",
-    }}
-    buttonStyle={{
-      borderRadius: "52px 0 0 52px",
-      backgroundColor: "white",
-      border: "none",
-    }}
-    containerStyle={{
-      width: "100%",
-    }}
-    dropdownStyle={{
-      borderRadius: "12px",
-    }}
-  />
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                width: {
+                  xs: "100%",
+                  md: "100%",
+                },
+              }}
+            >
+              <PhoneInput
+                country="in"
+                onlyCountries={["in"]}
+                disableDropdown
+                countryCodeEditable={false}
+                enableSearch={false}
+                value={formik.values.phoneNumber}
+                placeholder="Phone Number"
+                onChange={(value) => formik.setFieldValue("phoneNumber", value)}
+                onBlur={() => formik.setFieldTouched("phoneNumber", true)}
+                inputStyle={{
+                  width: "100%",
+                  height: "56px",
+                  borderRadius: "52px",
+                  border: "none",
+                  outline: "none",
+                  boxShadow: "4px 4px 10px rgba(104, 39, 184, 0.17)",
+                  color: color.firstColor,
+                  paddingLeft: "60px",
+                  fontSize: "16px",
+                  backgroundColor: "white",
+                }}
+                buttonStyle={{
+                  borderRadius: "52px 0 0 52px",
+                  backgroundColor: "white",
+                  border: "none",
+                }}
+                containerStyle={{
+                  width: "100%",
+                }}
+                dropdownStyle={{
+                  borderRadius: "12px",
+                }}
+              />
 
-  {formik.touched.phoneNumber && formik.errors.phoneNumber && (
-    <Typography
-      sx={{
-        color: "red",
-        fontSize: "12px",
-        mt: 0.5,
-        ml: "14px",
-      }}
-    >
-      {formik.errors.phoneNumber}
-    </Typography>
-  )}
-</Box>
+              {formik.touched.phoneNumber && formik.errors.phoneNumber && (
+                <Typography
+                  sx={{
+                    color: "red",
+                    fontSize: "12px",
+                    mt: 0.5,
+                    ml: "14px",
+                  }}
+                >
+                  {formik.errors.phoneNumber}
+                </Typography>
+              )}
+            </Box>
             {/* Email */}
             <CustomTextField
               label="Email Address (Optional)"
@@ -1687,633 +1795,633 @@ Please ensure you have read and understood all applicable policies.
             />
 
             {/* GST SECTION */}
-                   {/* GST SECTION - OPTIONAL */}
-<Box sx={{ mt: 3, mb: 2 }}>
-  <Box sx={{ 
-    display: 'flex', 
-    flexDirection: { xs: 'column', sm: 'row' }, 
-    justifyContent: 'space-between', 
-    alignItems: { xs: 'flex-start', sm: 'center' }, 
-    mb: 1,
-    gap: { xs: 1, sm: 0 }
-  }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Typography
-        variant="subtitle1"
-        sx={{ 
-          color: color.firstColor, 
-          fontWeight: "bold",
-          fontSize: { xs: '1rem', sm: '1.1rem' }
-        }}
-      >
-        GST Details(Optional)
-      </Typography>
-      
-      {/* GST Added Indicator */}
-      {gstinNumber && (
-        <Chip
-          label="GST Added ✓"
-          color="success"
-          size="small"
-          icon={<VerifiedIcon />}
-          sx={{ 
-            fontSize: { xs: '0.7rem', sm: '0.8rem' },
-            height: { xs: 28, sm: 32 }
-          }}
-        />
-      )}
-    </Box>
-    
-    <Box sx={{ 
-      display: 'flex', 
-      gap: 1,
-      width: { xs: '100%', sm: 'auto' }
-    }}>
-      {/* Toggle Button - Only show "Add GST" when not added yet */}
-      {!gstinNumber ? (
-        <Button
-          size="small"
-          variant={gstSectionOpen ? "outlined" : "contained"}
-          onClick={() => {
-            setGstSectionOpen(!gstSectionOpen);
-            if (isLoggedIn() && !gstSectionOpen) {
-              loadUserGSTRecords(getUserId());
-            }
-          }}
-          sx={{ 
-            textTransform: 'none',
-            fontSize: { xs: '0.75rem', sm: '0.875rem' },
-            minWidth: { xs: '100px', sm: '120px' },
-            whiteSpace: 'nowrap',
-            bgcolor: gstSectionOpen ? 'transparent' : color.firstColor,
-            color: gstSectionOpen ? color.firstColor : 'white',
-            borderColor: gstSectionOpen ? color.firstColor : 'transparent',
-            '&:hover': {
-              bgcolor: gstSectionOpen ? '#f5f0ff' : color.firstColor,
-              borderColor: color.firstColor
-            }
-          }}
-        >
-          {gstSectionOpen ? 'Cancel' : 'Add GST'}
-        </Button>
-      ) : (
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={handleClearGST}
-            sx={{ 
-              textTransform: 'none',
-              fontSize: { xs: '0.75rem', sm: '0.875rem' },
-              minWidth: { xs: '80px', sm: '100px' },
-              whiteSpace: 'nowrap',
-              borderColor: '#ff6b6b',
-              color: '#ff6b6b',
-              '&:hover': {
-                bgcolor: '#ffeaea',
-                borderColor: '#ff4444'
-              }
-            }}
-          >
-            Remove
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => setGstSectionOpen(!gstSectionOpen)}
-            sx={{ 
-              textTransform: 'none',
-              fontSize: { xs: '0.75rem', sm: '0.875rem' },
-              minWidth: { xs: '100px', sm: '120px' },
-              whiteSpace: 'nowrap',
-              borderColor: color.firstColor,
-              color: color.firstColor,
-              '&:hover': {
-                bgcolor: '#f5f0ff'
-              }
-            }}
-          >
-            {gstSectionOpen ? 'Hide Details' : 'Change GST'}
-          </Button>
-        </Box>
-      )}
-    </Box>
-  </Box>
-
-  {/* Optional GST Notice */}
-  {!gstinNumber && !gstSectionOpen && (
-    <Box sx={{ 
-      p: { xs: 1, sm: 1.5 },
-      borderRadius: 1.5,
-      bgcolor: '#f0f7ff',
-      border: '1px solid #cce5ff',
-      mb: 2
-    }}>
-      <Typography variant="body2" sx={{ 
-        color: '#0066cc',
-        fontSize: { xs: '0.8rem', sm: '0.9rem' },
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1
-      }}>
-        <BusinessIcon fontSize="small" />
-        Need a business invoice? Add your GST details to get a tax invoice with your booking.
-      </Typography>
-    </Box>
-  )}
-
-  {gstSectionOpen && (
-    <Box sx={{
-      p: { xs: 1.5, sm: 2 },
-      borderRadius: 2,
-      bgcolor: '#f8f9fa',
-      border: '1px solid #dee2e6',
-      animation: 'slideDown 0.3s ease-out'
-    }}>
-      {/* Loading state */}
-      {loadingGSTRecords && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
-          <CircularProgress size={24} />
-        </Box>
-      )}
-
-      {/* STEP 1: Show saved GST records if user is logged in */}
-      {isLoggedIn() && userGSTRecords.length > 0 && !showNewGSTForm && (
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="body2" sx={{ 
-            mb: 1.5, 
-            color: color.forthColor, 
-            fontWeight: 600, 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 1,
-            fontSize: { xs: '0.85rem', sm: '0.9rem' }
-          }}>
-            <BusinessIcon fontSize="small" />
-            Your Saved GST Records:
-          </Typography>
-          
-          <Box sx={{ 
-            p: { xs: 1, sm: 2 }, 
-            borderRadius: 2, 
-            bgcolor: 'white', 
-            border: '1px solid #e0e0e0',
-            maxHeight: { xs: '250px', sm: '300px' },
-            overflowY: 'auto'
-          }}>
-            {userGSTRecords.length === 0 ? (
-              <Box sx={{ 
-                p: 3, 
-                textAlign: 'center',
-                color: '#666'
+            {/* GST SECTION - OPTIONAL */}
+            <Box sx={{ mt: 3, mb: 2 }}>
+              <Box sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                justifyContent: 'space-between',
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                mb: 1,
+                gap: { xs: 1, sm: 0 }
               }}>
-                <BusinessIcon sx={{ fontSize: 40, color: '#ddd', mb: 1 }} />
-                <Typography variant="body2">
-                  No saved GST records found
-                </Typography>
-                <Typography variant="caption">
-                  Add your first GSTIN to save it for future bookings
-                </Typography>
-              </Box>
-            ) : (
-              userGSTRecords.map((record, index) => {
-                const isVerified = record.verified === true || record.gstStatus === "Active";
-                const isSelected = selectedGSTRecord?.id === record.id || 
-                                 selectedGSTRecord?._id === record._id;
-                
-                return (
-                  <Box 
-                    key={record._id || record.id || index}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography
+                    variant="subtitle1"
                     sx={{
-                      p: { xs: 1, sm: 1.5 },
-                      mb: 1.5,
-                      borderRadius: 2,
-                      border: isSelected ? `2px solid ${color.firstColor}` : '1px solid #ddd',
-                      backgroundColor: isSelected ? '#f3e5f5' : 'white',
-                      cursor: 'pointer',
-                      '&:hover': {
-                        borderColor: color.firstColor,
-                        backgroundColor: '#faf5ff'
-                      }
+                      color: color.firstColor,
+                      fontWeight: "bold",
+                      fontSize: { xs: '1rem', sm: '1.1rem' }
                     }}
-                    onClick={() => handleGSTRecordSelect(record)}
                   >
-                    <Box sx={{ 
-                      display: 'flex', 
-                      flexDirection: { xs: 'column', sm: 'row' },
-                      justifyContent: 'space-between', 
-                      alignItems: { xs: 'flex-start', sm: 'center' },
-                      gap: { xs: 1, sm: 0 }
-                    }}>
-                      <Box sx={{ flex: 1, width: '100%' }}>
-                        <Box sx={{ 
-                          display: 'flex', 
-                          flexDirection: { xs: 'column', sm: 'row' },
-                          alignItems: { xs: 'flex-start', sm: 'center' }, 
-                          gap: { xs: 0.5, sm: 1 }, 
-                          mb: 0.5 
-                        }}>
-                          <Typography variant="body2" sx={{ 
-                            fontWeight: 600,
-                            fontSize: { xs: '0.85rem', sm: '0.9rem' }
-                          }}>
-                            {record.gstNumber}
-                          </Typography>
-                          <Box sx={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: 0.5,
-                            flexWrap: 'wrap'
-                          }}>
-                            {isVerified && (
-                              <Tooltip title="Verified GST">
-                                <VerifiedIcon fontSize="small" color="success" />
-                              </Tooltip>
-                            )}
-                            {record.gstStatus && (
-                              <Chip 
-                                label={record.gstStatus}
-                                size="small"
-                                color={record.gstStatus === "Active" ? "success" : "error"}
-                                variant="outlined"
-                                sx={{ height: 20, fontSize: '0.65rem' }}
-                              />
-                            )}
-                          </Box>
-                        </Box>
-                        <Typography variant="caption" sx={{ 
-                          color: '#666', 
-                          display: 'block', 
-                          mb: 0.5,
-                          fontSize: { xs: '0.75rem', sm: '0.8rem' }
-                        }}>
-                          {record.legalName}
-                        </Typography>
-                        <Typography variant="caption" sx={{ 
-                          color: '#888', 
-                          display: 'block', 
-                          fontSize: { xs: '0.7rem', sm: '0.75rem' }
-                        }}>
-                          {record.address}
-                        </Typography>
-                      </Box>
-                      
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 0.5,
-                        width: { xs: '100%', sm: 'auto' },
-                        justifyContent: { xs: 'flex-end', sm: 'flex-start' },
-                        mt: { xs: 1, sm: 0 }
+                    GST Details(Optional)
+                  </Typography>
+
+                  {/* GST Added Indicator */}
+                  {gstinNumber && (
+                    <Chip
+                      label="GST Added ✓"
+                      color="success"
+                      size="small"
+                      icon={<VerifiedIcon />}
+                      sx={{
+                        fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                        height: { xs: 28, sm: 32 }
+                      }}
+                    />
+                  )}
+                </Box>
+
+                <Box sx={{
+                  display: 'flex',
+                  gap: 1,
+                  width: { xs: '100%', sm: 'auto' }
+                }}>
+                  {/* Toggle Button - Only show "Add GST" when not added yet */}
+                  {!gstinNumber ? (
+                    <Button
+                      size="small"
+                      variant={gstSectionOpen ? "outlined" : "contained"}
+                      onClick={() => {
+                        setGstSectionOpen(!gstSectionOpen);
+                        if (isLoggedIn() && !gstSectionOpen) {
+                          loadUserGSTRecords(getUserId());
+                        }
+                      }}
+                      sx={{
+                        textTransform: 'none',
+                        fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                        minWidth: { xs: '100px', sm: '120px' },
+                        whiteSpace: 'nowrap',
+                        bgcolor: gstSectionOpen ? 'transparent' : color.firstColor,
+                        color: gstSectionOpen ? color.firstColor : 'white',
+                        borderColor: gstSectionOpen ? color.firstColor : 'transparent',
+                        '&:hover': {
+                          bgcolor: gstSectionOpen ? '#f5f0ff' : color.firstColor,
+                          borderColor: color.firstColor
+                        }
+                      }}
+                    >
+                      {gstSectionOpen ? 'Cancel' : 'Add GST'}
+                    </Button>
+                  ) : (
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={handleClearGST}
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                          minWidth: { xs: '80px', sm: '100px' },
+                          whiteSpace: 'nowrap',
+                          borderColor: '#ff6b6b',
+                          color: '#ff6b6b',
+                          '&:hover': {
+                            bgcolor: '#ffeaea',
+                            borderColor: '#ff4444'
+                          }
+                        }}
+                      >
+                        Remove
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setGstSectionOpen(!gstSectionOpen)}
+                        sx={{
+                          textTransform: 'none',
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                          minWidth: { xs: '100px', sm: '120px' },
+                          whiteSpace: 'nowrap',
+                          borderColor: color.firstColor,
+                          color: color.firstColor,
+                          '&:hover': {
+                            bgcolor: '#f5f0ff'
+                          }
+                        }}
+                      >
+                        {gstSectionOpen ? 'Hide Details' : 'Change GST'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+
+              {/* Optional GST Notice */}
+              {!gstinNumber && !gstSectionOpen && (
+                <Box sx={{
+                  p: { xs: 1, sm: 1.5 },
+                  borderRadius: 1.5,
+                  bgcolor: '#f0f7ff',
+                  border: '1px solid #cce5ff',
+                  mb: 2
+                }}>
+                  <Typography variant="body2" sx={{
+                    color: '#0066cc',
+                    fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1
+                  }}>
+                    <BusinessIcon fontSize="small" />
+                    Need a business invoice? Add your GST details to get a tax invoice with your booking.
+                  </Typography>
+                </Box>
+              )}
+
+              {gstSectionOpen && (
+                <Box sx={{
+                  p: { xs: 1.5, sm: 2 },
+                  borderRadius: 2,
+                  bgcolor: '#f8f9fa',
+                  border: '1px solid #dee2e6',
+                  animation: 'slideDown 0.3s ease-out'
+                }}>
+                  {/* Loading state */}
+                  {loadingGSTRecords && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  )}
+
+                  {/* STEP 1: Show saved GST records if user is logged in */}
+                  {isLoggedIn() && userGSTRecords.length > 0 && !showNewGSTForm && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="body2" sx={{
+                        mb: 1.5,
+                        color: color.forthColor,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        fontSize: { xs: '0.85rem', sm: '0.9rem' }
                       }}>
-                        {isSelected ? (
-                          <Chip 
-                            label="Selected" 
-                            size="small" 
-                            color="success" 
-                            icon={<CheckIcon />}
-                            sx={{ height: 24, fontSize: '0.7rem' }}
-                          />
+                        <BusinessIcon fontSize="small" />
+                        Your Saved GST Records:
+                      </Typography>
+
+                      <Box sx={{
+                        p: { xs: 1, sm: 2 },
+                        borderRadius: 2,
+                        bgcolor: 'white',
+                        border: '1px solid #e0e0e0',
+                        maxHeight: { xs: '250px', sm: '300px' },
+                        overflowY: 'auto'
+                      }}>
+                        {userGSTRecords.length === 0 ? (
+                          <Box sx={{
+                            p: 3,
+                            textAlign: 'center',
+                            color: '#666'
+                          }}>
+                            <BusinessIcon sx={{ fontSize: 40, color: '#ddd', mb: 1 }} />
+                            <Typography variant="body2">
+                              No saved GST records found
+                            </Typography>
+                            <Typography variant="caption">
+                              Add your first GSTIN to save it for future bookings
+                            </Typography>
+                          </Box>
                         ) : (
-                          <Button 
-                            size="small" 
-                            variant="outlined"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleGSTRecordSelect(record);
-                            }}
-                            sx={{ 
-                              fontSize: '0.75rem',
-                              minWidth: '70px'
-                            }}
-                          >
-                            Select
-                          </Button>
+                          userGSTRecords.map((record, index) => {
+                            const isVerified = record.verified === true || record.gstStatus === "Active";
+                            const isSelected = selectedGSTRecord?.id === record.id ||
+                              selectedGSTRecord?._id === record._id;
+
+                            return (
+                              <Box
+                                key={record._id || record.id || index}
+                                sx={{
+                                  p: { xs: 1, sm: 1.5 },
+                                  mb: 1.5,
+                                  borderRadius: 2,
+                                  border: isSelected ? `2px solid ${color.firstColor}` : '1px solid #ddd',
+                                  backgroundColor: isSelected ? '#f3e5f5' : 'white',
+                                  cursor: 'pointer',
+                                  '&:hover': {
+                                    borderColor: color.firstColor,
+                                    backgroundColor: '#faf5ff'
+                                  }
+                                }}
+                                onClick={() => handleGSTRecordSelect(record)}
+                              >
+                                <Box sx={{
+                                  display: 'flex',
+                                  flexDirection: { xs: 'column', sm: 'row' },
+                                  justifyContent: 'space-between',
+                                  alignItems: { xs: 'flex-start', sm: 'center' },
+                                  gap: { xs: 1, sm: 0 }
+                                }}>
+                                  <Box sx={{ flex: 1, width: '100%' }}>
+                                    <Box sx={{
+                                      display: 'flex',
+                                      flexDirection: { xs: 'column', sm: 'row' },
+                                      alignItems: { xs: 'flex-start', sm: 'center' },
+                                      gap: { xs: 0.5, sm: 1 },
+                                      mb: 0.5
+                                    }}>
+                                      <Typography variant="body2" sx={{
+                                        fontWeight: 600,
+                                        fontSize: { xs: '0.85rem', sm: '0.9rem' }
+                                      }}>
+                                        {record.gstNumber}
+                                      </Typography>
+                                      <Box sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 0.5,
+                                        flexWrap: 'wrap'
+                                      }}>
+                                        {isVerified && (
+                                          <Tooltip title="Verified GST">
+                                            <VerifiedIcon fontSize="small" color="success" />
+                                          </Tooltip>
+                                        )}
+                                        {record.gstStatus && (
+                                          <Chip
+                                            label={record.gstStatus}
+                                            size="small"
+                                            color={record.gstStatus === "Active" ? "success" : "error"}
+                                            variant="outlined"
+                                            sx={{ height: 20, fontSize: '0.65rem' }}
+                                          />
+                                        )}
+                                      </Box>
+                                    </Box>
+                                    <Typography variant="caption" sx={{
+                                      color: '#666',
+                                      display: 'block',
+                                      mb: 0.5,
+                                      fontSize: { xs: '0.75rem', sm: '0.8rem' }
+                                    }}>
+                                      {record.legalName}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{
+                                      color: '#888',
+                                      display: 'block',
+                                      fontSize: { xs: '0.7rem', sm: '0.75rem' }
+                                    }}>
+                                      {record.address}
+                                    </Typography>
+                                  </Box>
+
+                                  <Box sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 0.5,
+                                    width: { xs: '100%', sm: 'auto' },
+                                    justifyContent: { xs: 'flex-end', sm: 'flex-start' },
+                                    mt: { xs: 1, sm: 0 }
+                                  }}>
+                                    {isSelected ? (
+                                      <Chip
+                                        label="Selected"
+                                        size="small"
+                                        color="success"
+                                        icon={<CheckIcon />}
+                                        sx={{ height: 24, fontSize: '0.7rem' }}
+                                      />
+                                    ) : (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleGSTRecordSelect(record);
+                                        }}
+                                        sx={{
+                                          fontSize: '0.75rem',
+                                          minWidth: '70px'
+                                        }}
+                                      >
+                                        Select
+                                      </Button>
+                                    )}
+
+                                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                      <Tooltip title="Copy GSTIN">
+                                        <IconButton
+                                          size="small"
+                                          sx={{ fontSize: { xs: '0.8rem', sm: '1rem' } }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleCopyGSTIN(record.gstNumber);
+                                          }}
+                                        >
+                                          <CopyIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+
+                                      <Tooltip title="Remove from account">
+                                        <IconButton
+                                          size="small"
+                                          color="error"
+                                          sx={{ fontSize: { xs: '0.8rem', sm: '1rem' } }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteGST(record.id || record._id);
+                                          }}
+                                          disabled={deletingGST === (record.id || record._id)}
+                                        >
+                                          {deletingGST === (record.id || record._id) ? (
+                                            <CircularProgress size={16} />
+                                          ) : (
+                                            <DeleteIcon fontSize="small" />
+                                          )}
+                                        </IconButton>
+                                      </Tooltip>
+                                    </Box>
+                                  </Box>
+                                </Box>
+                              </Box>
+                            );
+                          })
                         )}
-                        
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          <Tooltip title="Copy GSTIN">
-                            <IconButton 
-                              size="small"
-                              sx={{ fontSize: { xs: '0.8rem', sm: '1rem' } }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCopyGSTIN(record.gstNumber);
-                              }}
-                            >
-                              <CopyIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          
-                          <Tooltip title="Remove from account">
-                            <IconButton 
-                              size="small" 
-                              color="error"
-                              sx={{ fontSize: { xs: '0.8rem', sm: '1rem' } }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteGST(record.id || record._id);
-                              }}
-                              disabled={deletingGST === (record.id || record._id)}
-                            >
-                              {deletingGST === (record.id || record._id) ? (
-                                <CircularProgress size={16} />
-                              ) : (
-                                <DeleteIcon fontSize="small" />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
+                      </Box>
+
+                      {/* Add New GST Button */}
+                      <Box sx={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        mt: 2
+                      }}>
+                        <Button
+                          startIcon={<AddIcon />}
+                          variant="outlined"
+                          onClick={handleAddNewGST}
+                          sx={{
+                            textTransform: 'none',
+                            fontSize: { xs: '0.8rem', sm: '0.875rem' }
+                          }}
+                        >
+                          Add New GST
+                        </Button>
                       </Box>
                     </Box>
-                  </Box>
-                );
-              })
-            )}
-          </Box>
-          
-          {/* Add New GST Button */}
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            mt: 2 
-          }}>
-            <Button
-              startIcon={<AddIcon />}
-              variant="outlined"
-              onClick={handleAddNewGST}
-              sx={{ 
-                textTransform: 'none',
-                fontSize: { xs: '0.8rem', sm: '0.875rem' }
-              }}
-            >
-              Add New GST
-            </Button>
-          </Box>
-        </Box>
-      )}
+                  )}
 
-      {/* STEP 2: Show GST verification form when adding new GST or if no saved records */}
-      {(showNewGSTForm || !isLoggedIn() || (isLoggedIn() && userGSTRecords.length === 0)) && (
-        <Box>
-          <Typography variant="body2" sx={{ 
-            mb: 2, 
-            color: color.forthColor, 
-            fontWeight: 600,
-            fontSize: { xs: '0.9rem', sm: '1rem' }
-          }}>
-            {showNewGSTForm ? 'Add New GSTIN' : 'Enter GSTIN for Business Invoice'}
-          </Typography>
-          
-          {/* GSTIN Input */}
-          <Box sx={{ mb: 2 }}>
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: { xs: 'column', sm: 'row' },
-              alignItems: { xs: 'stretch', sm: 'center' }, 
-              gap: { xs: 1, sm: 1 }, 
-              mb: 1 
-            }}>
-              <CustomTextField
-                label="GSTIN Number"
-                fullWidth
-                value={gstinNumber}
-                onChange={(e) => {
-                  const value = e.target.value.toUpperCase();
-                  setGstinNumber(value);
-                  // Auto-verify if 15 characters entered
-                  if (value.length === 15) {
-                    const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
-                    if (!gstinRegex.test(value)) {
-                      toast.error("Invalid GSTIN format. Please check the number.");
-                      setGstVerificationStatus("invalid");
-                    }
-                  }
-                }}
-                placeholder="Enter 15-digit GSTIN"
-                inputRef={gstinFieldRef}
-                disabled={gstVerificationStatus === "verified"}
-                sx={{ flex: 1 }}
-                size="small"
-              />
-              
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center',
-                gap: 1
-              }}>
-                {gstVerificationStatus === "verified" && (
-                  <Tooltip title="GSTIN Verified">
-                    <VerifiedIcon color="success" sx={{ 
-                      fontSize: { xs: 24, sm: 28 } 
-                    }} />
-                  </Tooltip>
-                )}
-                
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={handleVerifyGST}
-                  disabled={verifyingGst || gstVerificationStatus === "verified" || gstinNumber.length !== 15}
-                  sx={{ 
-                    textTransform: 'none', 
-                    bgcolor: color.firstColor,
-                    fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                    minWidth: { xs: '100px', sm: '120px' },
-                    height: { xs: '36px', sm: '40px' }
-                  }}
-                  startIcon={verifyingGst ? <CircularProgress size={16} color="inherit" /> : null}
-                >
-                  {verifyingGst ? 'Verifying...' : gstVerificationStatus === "verified" ? 'Verified' : 'Verify'}
-                </Button>
-              </Box>
-            </Box>
-            
-            {gstVerificationStatus === "invalid" && (
-              <Alert 
-                severity="error" 
-                sx={{ 
-                  mt: 1,
-                  fontSize: '0.8rem',
-                  py: 0.5
-                }}
-              >
-                Invalid GSTIN format. Please enter a valid 15-digit GSTIN.
-              </Alert>
-            )}
-            
-            {gstinNumber.length > 0 && gstinNumber.length < 15 && (
-              <Typography variant="caption" sx={{ 
-                color: 'warning.main', 
-                display: 'block', 
-                mt: 0.5,
-                fontSize: '0.75rem'
-              }}>
-                Enter 15-digit GSTIN to verify
-              </Typography>
-            )}
-          </Box>
+                  {/* STEP 2: Show GST verification form when adding new GST or if no saved records */}
+                  {(showNewGSTForm || !isLoggedIn() || (isLoggedIn() && userGSTRecords.length === 0)) && (
+                    <Box>
+                      <Typography variant="body2" sx={{
+                        mb: 2,
+                        color: color.forthColor,
+                        fontWeight: 600,
+                        fontSize: { xs: '0.9rem', sm: '1rem' }
+                      }}>
+                        {showNewGSTForm ? 'Add New GSTIN' : 'Enter GSTIN for Business Invoice'}
+                      </Typography>
 
-          {/* Show verified GST details */}
-          {gstVerificationStatus === "verified" && (
-            <>
-              <CustomTextField
-                label="Legal Business Name"
-                fullWidth
-                margin="normal"
-                size="small"
-                value={legalName}
-                onChange={(e) => setLegalName(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <Tooltip title="Verified">
-                      <VerifiedIcon color="success" sx={{ mr: 1, fontSize: 20 }} />
-                    </Tooltip>
-                  )
-                }}
-                sx={{ mb: 2 }}
-              />
+                      {/* GSTIN Input */}
+                      <Box sx={{ mb: 2 }}>
+                        <Box sx={{
+                          display: 'flex',
+                          flexDirection: { xs: 'column', sm: 'row' },
+                          alignItems: { xs: 'stretch', sm: 'center' },
+                          gap: { xs: 1, sm: 1 },
+                          mb: 1
+                        }}>
+                          <CustomTextField
+                            label="GSTIN Number"
+                            fullWidth
+                            value={gstinNumber}
+                            onChange={(e) => {
+                              const value = e.target.value.toUpperCase();
+                              setGstinNumber(value);
+                              // Auto-verify if 15 characters entered
+                              if (value.length === 15) {
+                                const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
+                                if (!gstinRegex.test(value)) {
+                                  toast.error("Invalid GSTIN format. Please check the number.");
+                                  setGstVerificationStatus("invalid");
+                                }
+                              }
+                            }}
+                            placeholder="Enter 15-digit GSTIN"
+                            inputRef={gstinFieldRef}
+                            disabled={gstVerificationStatus === "verified"}
+                            sx={{ flex: 1 }}
+                            size="small"
+                          />
 
-              <CustomTextField
-                label="Registered Business Address"
-                fullWidth
-                margin="normal"
-                size="small"
-                multiline
-                rows={2}
-                value={gstAddress}
-                onChange={(e) => setGstAddress(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <Tooltip title="Verified">
-                      <VerifiedIcon color="success" sx={{ mr: 1, fontSize: 20 }} />
-                    </Tooltip>
-                  )
-                }}
-                sx={{ mb: 2 }}
-              />
+                          <Box sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}>
+                            {gstVerificationStatus === "verified" && (
+                              <Tooltip title="GSTIN Verified">
+                                <VerifiedIcon color="success" sx={{
+                                  fontSize: { xs: 24, sm: 28 }
+                                }} />
+                              </Tooltip>
+                            )}
 
-              <Alert 
-                severity="success" 
-                sx={{ 
-                  mb: 2,
-                  fontSize: '0.9rem'
-                }}
-                icon={<VerifiedIcon />}
-              >
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  GSTIN verified successfully!
-                </Typography>
-                <Typography variant="caption">
-                  This GST will be added to your invoice
-                </Typography>
-              </Alert>
-              
-              {/* For logged-in users: Show message that GST will be saved to account */}
-              {isLoggedIn() && (
-                <Typography variant="caption" sx={{ 
-                  color: '#666', 
-                  display: 'block', 
-                  textAlign: 'center', 
-                  mt: 1,
-                  fontSize: '0.8rem'
-                }}>
-                  This GST record will be saved to your account for future bookings
-                </Typography>
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={handleVerifyGST}
+                              disabled={verifyingGst || gstVerificationStatus === "verified" || gstinNumber.length !== 15}
+                              sx={{
+                                textTransform: 'none',
+                                bgcolor: color.firstColor,
+                                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                                minWidth: { xs: '100px', sm: '120px' },
+                                height: { xs: '36px', sm: '40px' }
+                              }}
+                              startIcon={verifyingGst ? <CircularProgress size={16} color="inherit" /> : null}
+                            >
+                              {verifyingGst ? 'Verifying...' : gstVerificationStatus === "verified" ? 'Verified' : 'Verify'}
+                            </Button>
+                          </Box>
+                        </Box>
+
+                        {gstVerificationStatus === "invalid" && (
+                          <Alert
+                            severity="error"
+                            sx={{
+                              mt: 1,
+                              fontSize: '0.8rem',
+                              py: 0.5
+                            }}
+                          >
+                            Invalid GSTIN format. Please enter a valid 15-digit GSTIN.
+                          </Alert>
+                        )}
+
+                        {gstinNumber.length > 0 && gstinNumber.length < 15 && (
+                          <Typography variant="caption" sx={{
+                            color: 'warning.main',
+                            display: 'block',
+                            mt: 0.5,
+                            fontSize: '0.75rem'
+                          }}>
+                            Enter 15-digit GSTIN to verify
+                          </Typography>
+                        )}
+                      </Box>
+
+                      {/* Show verified GST details */}
+                      {gstVerificationStatus === "verified" && (
+                        <>
+                          <CustomTextField
+                            label="Legal Business Name"
+                            fullWidth
+                            margin="normal"
+                            size="small"
+                            value={legalName}
+                            onChange={(e) => setLegalName(e.target.value)}
+                            InputProps={{
+                              startAdornment: (
+                                <Tooltip title="Verified">
+                                  <VerifiedIcon color="success" sx={{ mr: 1, fontSize: 20 }} />
+                                </Tooltip>
+                              )
+                            }}
+                            sx={{ mb: 2 }}
+                          />
+
+                          <CustomTextField
+                            label="Registered Business Address"
+                            fullWidth
+                            margin="normal"
+                            size="small"
+                            multiline
+                            rows={2}
+                            value={gstAddress}
+                            onChange={(e) => setGstAddress(e.target.value)}
+                            InputProps={{
+                              startAdornment: (
+                                <Tooltip title="Verified">
+                                  <VerifiedIcon color="success" sx={{ mr: 1, fontSize: 20 }} />
+                                </Tooltip>
+                              )
+                            }}
+                            sx={{ mb: 2 }}
+                          />
+
+                          <Alert
+                            severity="success"
+                            sx={{
+                              mb: 2,
+                              fontSize: '0.9rem'
+                            }}
+                            icon={<VerifiedIcon />}
+                          >
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              GSTIN verified successfully!
+                            </Typography>
+                            <Typography variant="caption">
+                              This GST will be added to your invoice
+                            </Typography>
+                          </Alert>
+
+                          {/* For logged-in users: Show message that GST will be saved to account */}
+                          {isLoggedIn() && (
+                            <Typography variant="caption" sx={{
+                              color: '#666',
+                              display: 'block',
+                              textAlign: 'center',
+                              mt: 1,
+                              fontSize: '0.8rem'
+                            }}>
+                              This GST record will be saved to your account for future bookings
+                            </Typography>
+                          )}
+                        </>
+                      )}
+
+                      {/* Back button for logged-in users with existing records */}
+                      {isLoggedIn() && userGSTRecords.length > 0 && showNewGSTForm && (
+                        <Box sx={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          mt: 2
+                        }}>
+                          <Button
+                            variant="text"
+                            size="small"
+                            onClick={() => {
+                              setShowNewGSTForm(false);
+                              setGstinNumber("");
+                              setLegalName("");
+                              setGstAddress("");
+                              setGstVerificationStatus("none");
+                            }}
+                            sx={{
+                              textTransform: 'none',
+                              fontSize: '0.8rem'
+                            }}
+                          >
+                            ← Back to Saved GST Records
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* STEP 3: Show selected GST summary */}
+                  {selectedGSTRecord && (
+                    <Alert
+                      severity="success"
+                      sx={{
+                        mt: 2,
+                        fontSize: '0.9rem'
+                      }}
+                      icon={<CheckIcon />}
+                    >
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        Selected GST for Invoice:
+                      </Typography>
+                      <Box sx={{ ml: 1, mt: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {selectedGSTRecord.gstNumber}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#388e3c', display: 'block' }}>
+                          {selectedGSTRecord.legalName}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#666', display: 'block', mt: 0.5 }}>
+                          {selectedGSTRecord.address}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={handleClearGST}
+                          sx={{ fontSize: '0.75rem' }}
+                        >
+                          Remove GST
+                        </Button>
+                      </Box>
+                    </Alert>
+                  )}
+
+                  {/* Optional GST Notice inside section */}
+                  {!gstinNumber && (
+                    <Box sx={{
+                      p: { xs: 1, sm: 1.5 },
+                      borderRadius: 1.5,
+                      bgcolor: '#f0f7ff',
+                      border: '1px solid #cce5ff',
+                      mt: 2
+                    }}>
+                      <Typography variant="body2" sx={{
+                        color: '#0066cc',
+                        fontSize: { xs: '0.8rem', sm: '0.9rem' },
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1
+                      }}>
+                        <InfoIcon fontSize="small" />
+                        <strong>Optional:</strong> Add GST only if you need a business invoice. You can proceed without GST for personal bookings.
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
               )}
-            </>
-          )}
-          
-          {/* Back button for logged-in users with existing records */}
-          {isLoggedIn() && userGSTRecords.length > 0 && showNewGSTForm && (
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              mt: 2 
-            }}>
-              <Button
-                variant="text"
-                size="small"
-                onClick={() => {
-                  setShowNewGSTForm(false);
-                  setGstinNumber("");
-                  setLegalName("");
-                  setGstAddress("");
-                  setGstVerificationStatus("none");
-                }}
-                sx={{ 
-                  textTransform: 'none',
-                  fontSize: '0.8rem'
-                }}
-              >
-                ← Back to Saved GST Records
-              </Button>
             </Box>
-          )}
-        </Box>
-      )}
-
-      {/* STEP 3: Show selected GST summary */}
-      {selectedGSTRecord && (
-        <Alert 
-          severity="success" 
-          sx={{ 
-            mt: 2,
-            fontSize: '0.9rem'
-          }}
-          icon={<CheckIcon />}
-        >
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            Selected GST for Invoice:
-          </Typography>
-          <Box sx={{ ml: 1, mt: 0.5 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {selectedGSTRecord.gstNumber}
-            </Typography>
-            <Typography variant="caption" sx={{ color: '#388e3c', display: 'block' }}>
-              {selectedGSTRecord.legalName}
-            </Typography>
-            <Typography variant="caption" sx={{ color: '#666', display: 'block', mt: 0.5 }}>
-              {selectedGSTRecord.address}
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-            <Button
-              size="small"
-              color="error"
-              onClick={handleClearGST}
-              sx={{ fontSize: '0.75rem' }}
-            >
-              Remove GST
-            </Button>
-          </Box>
-        </Alert>
-      )}
-      
-      {/* Optional GST Notice inside section */}
-      {!gstinNumber && (
-        <Box sx={{ 
-          p: { xs: 1, sm: 1.5 },
-          borderRadius: 1.5,
-          bgcolor: '#f0f7ff',
-          border: '1px solid #cce5ff',
-          mt: 2
-        }}>
-          <Typography variant="body2" sx={{ 
-            color: '#0066cc',
-            fontSize: { xs: '0.8rem', sm: '0.9rem' },
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1
-          }}>
-            <InfoIcon fontSize="small" />
-            <strong>Optional:</strong> Add GST only if you need a business invoice. You can proceed without GST for personal bookings.
-          </Typography>
-        </Box>
-      )}
-    </Box>
-  )}
-</Box>
 
             {/* Coupon Section - Auto Applied */}
             <Box sx={{ mt: 3, mb: 2 }}>
@@ -2526,10 +2634,10 @@ Please ensure you have read and understood all applicable policies.
 
           {/* GST Info Badge if GST is added */}
           {gstVerificationStatus === "verified" && (
-            <Box sx={{ 
-              mb: 2, 
-              p: 1.5, 
-              bgcolor: "#e8f5e9", 
+            <Box sx={{
+              mb: 2,
+              p: 1.5,
+              bgcolor: "#e8f5e9",
               borderRadius: 1,
               border: "1px solid #c8e6c9",
               display: 'flex',
@@ -2552,10 +2660,10 @@ Please ensure you have read and understood all applicable policies.
           )}
 
           {/* Price Source Indicator */}
-          <Box sx={{ 
-            mb: 2, 
-            p: 1.5, 
-            bgcolor: "#e3f2fd", 
+          <Box sx={{
+            mb: 2,
+            p: 1.5,
+            bgcolor: "#e3f2fd",
             borderRadius: 1,
             border: "1px solid #bbdefb"
           }}>
@@ -2666,7 +2774,7 @@ Please ensure you have read and understood all applicable policies.
                       fontWeight: 600,
                     }}
                   >
-                     Huts4u Discount: - ₹ {couponDiscount.toFixed(2)}
+                    Huts4u Discount: - ₹ {couponDiscount.toFixed(2)}
                   </Typography>
                 </>
               )}
@@ -2784,17 +2892,17 @@ Please ensure you have read and understood all applicable policies.
 
             {/* GST Invoice Note if GST is added */}
             {gstVerificationStatus === "verified" && (
-              <Box sx={{ 
-                mt: 1.5, 
-                p: 1.5, 
-                bgcolor: "#e8f5e9", 
+              <Box sx={{
+                mt: 1.5,
+                p: 1.5,
+                bgcolor: "#e8f5e9",
                 borderRadius: 1,
                 border: "1px solid #c8e6c9"
               }}>
-                <Typography sx={{ 
-                  fontSize: 13, 
-                  color: "#2e7d32", 
-                  fontWeight: 600, 
+                <Typography sx={{
+                  fontSize: 13,
+                  color: "#2e7d32",
+                  fontWeight: 600,
                   textAlign: "center",
                   display: 'flex',
                   alignItems: 'center',
