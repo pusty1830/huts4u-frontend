@@ -991,6 +991,57 @@ const toCdn = (url?: string) => {
       return minPrice > 0 ? `Similar hotels in Bhubaneswar offer hourly stays starting from ₹${minPrice} for 3 hours` : "Similar hotels in Bhubaneswar offer hourly stays";
     }
   };
+  const hotelSchema = {
+  "@context": "https://schema.org",
+  "@type": "Hotel",
+  "@id": `https://huts4u.com/hotel/${hotel.id}`,
+  "name": hotel.propertyName,
+  "url": `https://huts4u.com/hotel/${hotel.id}`,
+  "image": (hotel.propertyImages || []).map((img: string) => toCdn(img)),
+  "description": hotel.propertyDesc,
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": hotel.address,
+    "addressLocality": "Bhubaneswar",
+    "addressRegion": "Odisha",
+    "addressCountry": "IN"
+  },
+  "geo": mapViewport?.latitude && mapViewport?.longitude
+    ? {
+        "@type": "GeoCoordinates",
+        "latitude": mapViewport.latitude,
+        "longitude": mapViewport.longitude
+      }
+    : undefined,
+  "amenityFeature": Array.from(
+    new Set(
+      hotel?.rooms?.flatMap((room: any) => room.amenities || []) || []
+    )
+  ).map((amenity: any) => ({
+    "@type": "LocationFeatureSpecification",
+    "name": amenity,
+    "value": true
+  })),
+  ...(reviewCount > 0 && {
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": averageRating,
+      "reviewCount": reviewCount,
+      "bestRating": "5",
+      "worstRating": "1"
+    }
+  }),
+  "makesOffer": {
+    "@type": "Offer",
+    "priceCurrency": "INR",
+    "price": Math.round(displayCombinedBasePlatform),
+    "availability": availableRooms.length > 0
+      ? "https://schema.org/InStock"
+      : "https://schema.org/OutOfStock",
+    "url": window.location.href
+  }
+};
+
 
   return (
     <Box
@@ -1027,6 +1078,9 @@ const toCdn = (url?: string) => {
     
     {/* Additional meta tags */}
     <meta name="keywords" content={`${hotel.propertyName}, Bhubaneswar hotel, ${bookingType === "hourly" ? "hourly hotel" : "overnight stay"}, short stay, affordable hotel, Huts4U`} />
+    <script type="application/ld+json">
+  {JSON.stringify(hotelSchema)}
+</script>
   </Helmet>
 
 

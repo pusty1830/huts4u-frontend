@@ -1,40 +1,89 @@
 <!DOCTYPE html>
 <html lang="en">
- <head>
-  <meta charset="utf-8" />
+  <head>
+    <meta charset="utf-8" />
 
-  <link
-    rel="icon"
-    href="https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png"
-  />
+    <!-- ===================================================== -->
+    <!-- ✅ FAVICON (Browser Tab Logo) – FIXED -->
+    <!-- ===================================================== -->
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png"
+    />
 
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#000000" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
 
-  <!-- ✅ SEO Meta Description -->
-  <meta
-    name="description"
-    content="Book hourly hotel stays in Bhubaneswar with clean, comfortable rooms at affordable prices. Ideal for quick stays, business trips, and short breaks."
-  />
+    <!-- ✅ SEO Meta Description -->
+    <meta
+      name="description"
+      content="Book hourly and overnight hotel stays in Bhubaneswar with Huts4U. Clean rooms, flexible check-ins, and best prices."
+    />
 
-  <!-- ✅ SEO Title -->
-  <title>
-    Hourly Hotel Stays in Bhubaneswar | Comfortable Rooms at Best Prices
-  </title>
-</head>
+    <!-- ✅ SEO Title -->
+    <title>Hourly Hotel Stays in Bhubaneswar | Comfortable Rooms at Best Prices</title>
+
+    <!-- ===================================================== -->
+    <!-- ✅ WEBSITE SCHEMA (GLOBAL – SITELINKS ENABLED) -->
+    <!-- ===================================================== -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "@id": "https://huts4u.com/#website",
+        "name": "Huts4U",
+        "url": "https://huts4u.com",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://huts4u.com/search?location={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      }
+    </script>
+
+    <!-- ===================================================== -->
+    <!-- ✅ ORGANIZATION SCHEMA (LOGO + BRAND TRUST) -->
+    <!-- ===================================================== -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": "https://huts4u.com/#organization",
+        "name": "Huts4U",
+        "url": "https://huts4u.com",
+        "logo": "https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png"
+      }
+    </script>
+
+    <!-- ===================================================== -->
+    <!-- 🔜 GOOGLE SEARCH CONSOLE (ADD AFTER CODE IS SHARED) -->
+    <!-- ===================================================== -->
+    <!--
+    <meta name="google-site-verification" content="PASTE_CODE_HERE" />
+    -->
+
+    <!-- ===================================================== -->
+    <!-- 🔜 GOOGLE ANALYTICS GA4 (ADD AFTER ID IS SHARED) -->
+    <!-- ===================================================== -->
+    <!--
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-XXXXXXXXXX', { send_page_view: true });
+    </script>
+    -->
+  </head>
 
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
-
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
-
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
   </body>
 </html>

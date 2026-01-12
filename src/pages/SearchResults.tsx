@@ -2140,6 +2140,16 @@ const SearchResults = () => {
       )}
     </Box>
   );
+ const itemListSchema = {
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "itemListElement": paginatedData.map((hotel, index) => ({
+    "@type": "ListItem",
+    "position": index + 1,
+    "url": `https://huts4u.com/hotel/${hotel.id}`,
+    "name": hotel.propertyName
+  }))
+};
 
   return (
     <Box sx={{
@@ -2149,22 +2159,32 @@ const SearchResults = () => {
     }}>
       <Helmet>
   <title>Search Hotels in Bhubaneswar | Huts4u</title>
+
   <meta
     name="description"
     content="Search and book hourly hotels in Bhubaneswar quickly. Find hotels near you for short stays, business trips, or leisure visits."
   />
-  <link rel="canonical" href="https://www.huts4u.com/search" />
+
+  <link rel="canonical" href="https://huts4u.com/search" />
+
+  {/* WebPage Schema */}
   <script type="application/ld+json">
-    {`
-      {
-        "@context": "https://schema.org",
-        "@type": "WebPage",
-        "name": "Search Hotels",
-        "url": "https://www.huts4u.com/search"
-      }
-    `}
+    {JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Search Hotels",
+      "url": "https://huts4u.com/search"
+    })}
   </script>
+
+  {/* ItemList Schema (HOTEL LISTING) */}
+  {paginatedData.length > 0 && (
+    <script type="application/ld+json">
+      {JSON.stringify(itemListSchema)}
+    </script>
+  )}
 </Helmet>
+
 
       <SearchSection />
 

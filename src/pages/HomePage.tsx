@@ -26,34 +26,48 @@ const HomePage = () => {
   return (
     <Box sx={{overflowY:"hidden"}}>
       <Helmet>
-        <title>Hourly Hotel Stays in Bhubaneswar | Huts4u</title>
-        <meta
-          name="description"
-          content="Hourly hotel stays in Bhubaneswar with comfortable rooms at great prices and flexible booking options."
-        />
-        <link rel="canonical" href="https://www.huts4u.com/" />
-        <script type="application/ld+json">
-          {`
-            {
-              "@context": "https://schema.org",
-              "@type": "Hotel",
-              "name": "Huts4u",
-              "url": "https://www.huts4u.com",
-              "address": {
-                "@type": "PostalAddress",
-                "addressLocality": "Bhubaneswar",
-                "addressCountry": "IN"
-              },
-              "priceRange": "₹₹",
-              "amenityFeature": {
-                "@type": "LocationFeatureSpecification",
-                "name": "Hourly Hotel Booking",
-                "value": true
-              }
-            }
-          `}
-        </script>
-      </Helmet>
+  <title>Hourly Hotel Stays in Bhubaneswar | Huts4U</title>
+
+  <meta
+    name="description"
+    content="Book hourly and overnight hotel stays in Bhubaneswar with Huts4U. Clean rooms, flexible check-ins, and best prices."
+  />
+
+  <link rel="canonical" href="https://huts4u.com/" />
+
+  {/* Website Schema – REQUIRED for sitelinks */}
+  <script type="application/ld+json">
+    {JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "@id": "https://huts4u.com/#website",
+      "url": "https://huts4u.com",
+      "name": "Huts4U",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://huts4u.com/search?location={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    })}
+  </script>
+
+  {/* Organization Schema – fixes logo & brand */}
+  <script type="application/ld+json">
+    {JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://huts4u.com/#organization",
+      "name": "Huts4U",
+      "url": "https://huts4u.com",
+      "logo": "https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png",
+      "sameAs": [
+        "https://www.instagram.com/huts4u",
+        "https://www.facebook.com/huts4u"
+      ]
+    })}
+  </script>
+</Helmet>
+
 
       <HeroSection></HeroSection>
       {/* <ContentSection/> */}
