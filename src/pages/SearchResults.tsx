@@ -43,7 +43,8 @@ import {
   getAllHotels,
   getMyAllHotelswithBelongsTo,
   getAllRatings,
-  getAllInventories
+  getAllInventories,
+  getHourlyClosures // Add this import
 } from "../services/services";
 import SearchSection from "./Home Section/SearchSection";
 import dayjs from "dayjs";
@@ -59,9 +60,24 @@ const dataCache = {
   hotels: [] as any[],
   ratings: null as any,
   inventories: null as any,
+  hourlyClosures: [] as any[],
   lastFetched: 0,
   TTL: 5 * 60 * 1000,
 };
+
+// Hourly Closure Interface
+interface HourlyClosure {
+  id: number;
+  userId?: number;
+  hotelId: number;
+  closureDate: string; // YYYY-MM-DD format (start date for recurring)
+  startTime: string; // HH:mm format
+  endTime: string; // HH:mm format
+  reason?: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 const HotelCardSkeleton = ({ isMobile }: { isMobile: boolean }) => (
   <Card sx={{ mb: 2, height: { xs: "auto", md: 220 } }}>
@@ -96,18 +112,18 @@ const HotelCardSkeleton = ({ isMobile }: { isMobile: boolean }) => (
 // Function to get inventory-based price (INVENTORY FIRST, then room price)
 const getInventoryPrice = (room: any, inventoryData: any[], checkDate: string, slot: string): number => {
   if (!room || !checkDate) return 0;
-  
+
   const roomId = room.id;
   const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  
+
   // FIRST: Check inventory for the specific day
-  const dayInventory = inventoryData?.find(inv => 
+  const dayInventory = inventoryData?.find(inv =>
     inv.roomId === roomId && dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   );
 
   if (dayInventory) {
     // Return inventory price if available
-    switch(slot) {
+    switch (slot) {
       case 'rateFor1Night':
         return dayInventory.overnightRate || 0;
       case 'rateFor3Hour':
@@ -120,7 +136,7 @@ const getInventoryPrice = (room: any, inventoryData: any[], checkDate: string, s
         return 0;
     }
   }
-  
+
   // SECOND: If no inventory found for that day, use room price
   return room[slot] || 0;
 };
@@ -128,22 +144,22 @@ const getInventoryPrice = (room: any, inventoryData: any[], checkDate: string, s
 // Function to check slot availability
 const isSlotAvailable = (room: any, inventoryData: any[], checkDate: string, slot: string, checkinTime?: string): boolean => {
   if (!room || !checkDate) return false;
-  
+
   const roomStatus = room.status?.toLowerCase();
   const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
   if (!isStatusAvailable) return false;
-  
+
   const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  const dayInventory = inventoryData?.find(inv => 
+  const dayInventory = inventoryData?.find(inv =>
     dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   );
-  
+
   // If no inventory data for this day, check room availability
   if (!dayInventory) return true;
-  
+
   if (dayInventory.isBlocked) return false;
 
-  switch(slot) {
+  switch (slot) {
     case 'rateFor1Night':
       return dayInventory.overnightAvailable > dayInventory.overnightBooked;
     case 'rateFor3Hour':
@@ -157,127 +173,196 @@ const isSlotAvailable = (room: any, inventoryData: any[], checkDate: string, slo
   }
 };
 
-// Function to check overall room availability
-const checkRoomAvailability = (room: any, inventoryData: any[], checkDate: string, bookingType: string, checkinTime?: string): boolean => {
-  if (!room || !checkDate) return false;
-  
-  const roomStatus = room.status?.toLowerCase();
-  const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
-  if (!isStatusAvailable) return false;
-  
-  const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  const dayInventory = inventoryData.find(inv => 
-    dayjs(inv.date).format('YYYY-MM-DD') === checkDay
+// Function to check hourly closure for a hotel
+// Function to check hourly closure for a hotel - INVERTED LOGIC
+const checkHourlyClosure = (
+  hotel: any,
+  hourlyClosures: HourlyClosure[],
+  checkDate: string,
+  checkinTime?: string
+): { isClosed: boolean; closureReason: string } => {
+  // Find active closures for this hotel
+  const hotelClosures = hourlyClosures.filter(closure => 
+    closure.hotelId === hotel.id && 
+    closure.active === true
   );
   
-  // If no inventory data for this day, check room status only
-  if (!dayInventory) return true;
-  
-  if (dayInventory.isBlocked) return false;
-
-  if (bookingType === "hourly") {
-    // Check if any hourly slot is available
-    return (
-      (dayInventory.threeHourAvailable > dayInventory.threeHourBooked) ||
-      (dayInventory.sixHourAvailable > dayInventory.sixHourBooked) ||
-      (dayInventory.twelveHourAvailable > dayInventory.twelveHourBooked)
-    );
-  } else {
-    // Check overnight availability
-    return dayInventory.overnightAvailable > dayInventory.overnightBooked;
+  if (hotelClosures.length === 0) {
+    // If no closures set, hotel is OPEN all day
+    return { isClosed: false, closureReason: '' };
   }
+  
+  const selectedDate = dayjs(checkDate);
+  
+  // Check each closure schedule
+  for (const closure of hotelClosures) {
+    // For recurring closures, check if selected date is on or after start date
+    const closureStartDate = dayjs(closure.closureDate);
+    if (selectedDate.isBefore(closureStartDate, 'day')) {
+      continue; // This closure hasn't started yet
+    }
+    
+    // Get check-in time in minutes from midnight
+    let checkinMinutes = 0;
+    if (checkinTime) {
+      const [hours, minutes] = checkinTime.split(':').map(Number);
+      checkinMinutes = hours * 60 + minutes;
+    } else {
+      // Default to current time if no checkin time specified
+      const now = dayjs();
+      checkinMinutes = now.hour() * 60 + now.minute();
+    }
+    
+    // Get closure times in minutes from midnight
+    const [startHour, startMinute] = closure.startTime.split(':').map(Number);
+    const [endHour, endMinute] = closure.endTime.split(':').map(Number);
+    
+    const closureStartMinutes = startHour * 60 + startMinute;
+    const closureEndMinutes = endHour * 60 + endMinute;
+    
+    // Check if time is WITHIN opening hours
+    let isWithinOpeningHours = false;
+    
+    if (closureStartMinutes <= closureEndMinutes) {
+      // Normal opening hours (same day)
+      // Hotel is OPEN if checkin time is BETWEEN start and end times
+      isWithinOpeningHours = checkinMinutes >= closureStartMinutes && checkinMinutes < closureEndMinutes;
+    } else {
+      // Overnight opening hours (crosses midnight)
+      // Hotel is OPEN if checkin time is AFTER start time OR BEFORE end time
+      isWithinOpeningHours = checkinMinutes >= closureStartMinutes || checkinMinutes < closureEndMinutes;
+    }
+    
+    // If checkin time is WITHIN opening hours, hotel is OPEN
+    if (isWithinOpeningHours) {
+      return { isClosed: false, closureReason: '' };
+    }
+  }
+  
+  // If we get here, checkin time is NOT within any opening hours
+  // Find the NEXT opening time to show in the message
+  let nextOpeningTime = '';
+  const hotelClosure = hotelClosures[0]; // Take first closure
+  if (hotelClosure) {
+    nextOpeningTime = formatTime(hotelClosure.startTime);
+  }
+  
+  return { 
+    isClosed: true, 
+    closureReason: `Hotel opens at ${nextOpeningTime}` 
+  };
 };
 
-// UPDATED: Function to get hotel status - check hotel roomAvailable FIRST, then inventory
-const getHotelStatus = (hotel: any, room: any, inventoryData: any[], checkDate: string, bookingType: string): { 
-  isAvailable: boolean, 
-  status: string, 
-  reason: string 
+// UPDATED: Function to get hotel status - check hourly closure first, then hotel roomAvailable, then inventory
+const getHotelStatus = (
+  hotel: any,
+  room: any,
+  inventoryData: any[],
+  checkDate: string,
+  bookingType: string,
+  hourlyClosures: HourlyClosure[] = [],
+  checkinTime?: string
+): {
+  isAvailable: boolean,
+  status: string,
+  reason: string
 } => {
-  // DEBUG: Log hotel and room status
+  // FIRST: Check hourly closure for hourly bookings
+  if (bookingType === "hourly") {
+    const closureCheck = checkHourlyClosure(hotel, hourlyClosures, checkDate, checkinTime);
+    if (closureCheck.isClosed) {
+      console.log(`   ❌ Hotel has hourly closure: ${closureCheck.closureReason}`);
+      return {
+        isAvailable: false,
+        status: 'Closed',
+        reason: closureCheck.closureReason
+      };
+    }
+  }
+
   console.log(`🔍 Checking hotel: ${hotel?.propertyName}`);
   console.log(`   - Hotel roomAvailable: ${hotel?.roomAvailable || "Available"}`);
   console.log(`   - Room status: ${room?.status?.toLowerCase()}`);
-  
-  // FIRST: Check if hotel roomAvailable is "Unavailable" - show as "Sold Out"
+
+  // SECOND: Check if hotel roomAvailable is "Unavailable" - show as "Sold Out"
   const hotelRoomAvailable = hotel?.roomAvailable || "Available";
   if (hotelRoomAvailable === "Unavailable") {
     console.log(`   ❌ Hotel marked as Unavailable in roomAvailable field`);
-    return { 
-      isAvailable: false, 
+    return {
+      isAvailable: false,
       status: 'Sold Out',
       reason: 'Hotel is currently sold out'
     };
   }
 
-  // SECOND: Check room status
-  // const roomStatus = room?.status?.toLowerCase();
-  // const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
-  
-  // if (!isStatusAvailable) {
-  //   console.log(`   ❌ Room status not available: ${roomStatus}`);
-  //   return { 
-  //     isAvailable: false, 
-  //     status: 'Sold Out',
-  //     reason: 'Room is currently sold out'
-  //   };
-  // }
+  // THIRD: Check room status
+  const roomStatus = room?.status?.toLowerCase();
+  const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
+
+  if (!isStatusAvailable) {
+    console.log(`   ❌ Room status not available: ${roomStatus}`);
+    return {
+      isAvailable: false,
+      status: 'Sold Out',
+      reason: 'Room is currently sold out'
+    };
+  }
 
   const checkDay = checkDate ? dayjs(checkDate).format('YYYY-MM-DD') : '';
   console.log(`   - Check date: ${checkDay}`);
-  
+
   if (!checkDay) {
-    return { 
-      isAvailable: true, 
-      status: 'Available', 
+    return {
+      isAvailable: true,
+      status: 'Available',
       reason: 'Available for booking (no date specified)'
     };
   }
 
-  const dayInventory = checkDay ? inventoryData.find(inv => 
+  const dayInventory = checkDay ? inventoryData.find(inv =>
     dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   ) : null;
-  
+
   if (dayInventory) {
     console.log(`   - Found inventory for date`);
     console.log(`   - Inventory isBlocked: ${dayInventory.isBlocked}`);
-    
+
     if (dayInventory.isBlocked) {
-      return { 
-        isAvailable: false, 
-        status: 'Blocked', 
+      return {
+        isAvailable: false,
+        status: 'Blocked',
         reason: 'Room is blocked for selected date'
       };
     }
-    
+
     if (bookingType === "hourly") {
       const threeHourAvailable = dayInventory.threeHourAvailable > dayInventory.threeHourBooked;
       const sixHourAvailable = dayInventory.sixHourAvailable > dayInventory.sixHourBooked;
       const twelveHourAvailable = dayInventory.twelveHourAvailable > dayInventory.twelveHourBooked;
-      
+
       console.log(`   - Hourly availability check:`);
       console.log(`     - 3h: ${dayInventory.threeHourAvailable}/${dayInventory.threeHourBooked} = ${threeHourAvailable}`);
       console.log(`     - 6h: ${dayInventory.sixHourAvailable}/${dayInventory.sixHourBooked} = ${sixHourAvailable}`);
       console.log(`     - 12h: ${dayInventory.twelveHourAvailable}/${dayInventory.twelveHourBooked} = ${twelveHourAvailable}`);
-      
+
       const hasHourlyAvailability = threeHourAvailable || sixHourAvailable || twelveHourAvailable;
-      
+
       if (!hasHourlyAvailability) {
         console.log(`   ❌ No hourly slots available`);
-        return { 
-          isAvailable: false, 
-          status: 'Sold Out', 
+        return {
+          isAvailable: false,
+          status: 'Sold Out',
           reason: 'No hourly slots available for selected date'
         };
       }
     } else {
       const overnightAvailable = dayInventory.overnightAvailable > dayInventory.overnightBooked;
       console.log(`   - Overnight availability: ${dayInventory.overnightAvailable}/${dayInventory.overnightBooked} = ${overnightAvailable}`);
-      
+
       if (!overnightAvailable) {
-        return { 
-          isAvailable: false, 
-          status: 'Sold Out', 
+        return {
+          isAvailable: false,
+          status: 'Sold Out',
           reason: 'No overnight availability for selected date'
         };
       }
@@ -285,18 +370,16 @@ const getHotelStatus = (hotel: any, room: any, inventoryData: any[], checkDate: 
   } else {
     console.log(`   - No inventory found for date, assuming available`);
   }
-  
+
   console.log(`   ✅ Hotel is available`);
-  return { 
-    isAvailable: true, 
-    status: 'Available', 
+  return {
+    isAvailable: true,
+    status: 'Available',
     reason: 'Available for booking'
   };
 };
 
 // Get base room rate considering inventory (INVENTORY FIRST, then room)
-// Update the getBaseRate function to handle cases where no rates are available:
-
 const getBaseRate = (hotel: any, inventoryData: any[] = [], checkDate: string, bookingType: string, checkinTime?: string) => {
   if (!hotel?.rooms?.[0]) return 0;
 
@@ -312,28 +395,28 @@ const getBaseRate = (hotel: any, inventoryData: any[] = [], checkDate: string, b
   if (bookingType === "hourly") {
     // Check hourly rates with inventory
     const hourlyRates = [
-      { 
-        key: 'rateFor3Hour', 
+      {
+        key: 'rateFor3Hour',
         rate: getInventoryPrice(room, inventoryData, checkDate, 'rateFor3Hour'),
         available: isSlotAvailable(room, inventoryData, checkDate, 'rateFor3Hour', checkinTime)
       },
-      { 
-        key: 'rateFor6Hour', 
+      {
+        key: 'rateFor6Hour',
         rate: getInventoryPrice(room, inventoryData, checkDate, 'rateFor6Hour'),
         available: isSlotAvailable(room, inventoryData, checkDate, 'rateFor6Hour', checkinTime)
       },
-      { 
-        key: 'rateFor12Hour', 
+      {
+        key: 'rateFor12Hour',
         rate: getInventoryPrice(room, inventoryData, checkDate, 'rateFor12Hour'),
         available: isSlotAvailable(room, inventoryData, checkDate, 'rateFor12Hour', checkinTime)
       },
     ];
-    
+
     // Only include rates that are available and have price > 0
     baseRates = hourlyRates
       .filter(opt => opt.rate > 0 && opt.available)
       .map(opt => opt.rate);
-    
+
     // If no specific date rates available, use room's base rates
     if (baseRates.length === 0) {
       baseRates = [
@@ -346,7 +429,7 @@ const getBaseRate = (hotel: any, inventoryData: any[] = [], checkDate: string, b
     // Check overnight rate with inventory
     const overnightRate = getInventoryPrice(room, inventoryData, checkDate, 'rateFor1Night');
     const isAvailable = isSlotAvailable(room, inventoryData, checkDate, 'rateFor1Night');
-    
+
     if (overnightRate > 0 && isAvailable) {
       baseRates.push(overnightRate);
     } else if (room.rateFor1Night > 0) {
@@ -450,7 +533,7 @@ const getRatingsForHotel = (ratingsData: any, hotelId: string) => {
 const fetchRoomInventory = async (roomId: string, checkDate: string) => {
   try {
     const payLoad = {
-      data: { 
+      data: {
         filter: "",
         roomId: roomId,
         date: checkDate
@@ -461,7 +544,7 @@ const fetchRoomInventory = async (roomId: string, checkDate: string) => {
     };
 
     const inventoryResponse = await getAllInventories(payLoad);
-    
+
     let inventoryArray: any[] = [];
     if (inventoryResponse?.data?.data?.data && Array.isArray(inventoryResponse.data.data.data)) {
       inventoryArray = inventoryResponse.data.data.data;
@@ -480,6 +563,50 @@ const fetchRoomInventory = async (roomId: string, checkDate: string) => {
   }
 };
 
+// Fetch hourly closures
+const fetchHourlyClosures = async (): Promise<HourlyClosure[]> => {
+  try {
+    const payload = {
+      data: {
+        filter: "",
+        active: true
+      },
+      page: 0,
+      pageSize: 1000,
+      order: [["closureDate", "ASC"]]
+    };
+
+    const response = await getHourlyClosures(payload);
+    let closuresData: HourlyClosure[] = [];
+
+    if (response?.data?.data?.rows && Array.isArray(response.data.data.rows)) {
+      closuresData = response.data.data.rows;
+    } else if (Array.isArray(response?.data?.data)) {
+      closuresData = response.data.data;
+    }
+
+    console.log(`✅ Fetched ${closuresData.length} hourly closures`);
+    return closuresData;
+  } catch (error) {
+    console.error('Error fetching hourly closures:', error);
+    return [];
+  }
+};
+
+// Format time display
+const formatTime = (time: string): string => {
+  if (!time) return 'N/A';
+  try {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const formattedHour = hour % 12 || 12;
+    return `${formattedHour}:${minutes} ${ampm}`;
+  } catch {
+    return time;
+  }
+};
+
 // HotelCard component with hotel roomAvailable support
 const HotelCard = ({
   hotel,
@@ -487,22 +614,24 @@ const HotelCard = ({
   isMobile,
   hotelRatings = [],
   inventoryData = [],
+  hourlyClosures = [],
 }: {
   hotel: any;
   queryParams: URLSearchParams;
   isMobile: boolean;
   hotelRatings?: any[];
   inventoryData?: any[];
+  hourlyClosures?: HourlyClosure[];
 }) => {
   const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
-const CDN_BASE_URL = CDN_URL
+  const CDN_BASE_URL = CDN_URL;
 
-const toCdn = (url?: string) => {
-  if (!url) return "/default-hotel.jpg";
-  return url.includes(S3_BASE_URL)
-    ? url.replace(S3_BASE_URL, CDN_BASE_URL)
-    : url;
-};
+  const toCdn = (url?: string) => {
+    if (!url) return "/default-hotel.jpg";
+    return url.includes(S3_BASE_URL)
+      ? url.replace(S3_BASE_URL, CDN_BASE_URL)
+      : url;
+  };
 
   const navigate = useNavigate();
   const maxAmenities = isMobile ? 2 : 4;
@@ -518,8 +647,8 @@ const toCdn = (url?: string) => {
   const roomsCount = Math.max(1, Number(queryParams.get("rooms")) || 1);
   const nights = bookingType === "hourly" ? 1 : Math.max(1, Number(queryParams.get("nights")) || 1);
 
-  // UPDATED: Check availability using hotel roomAvailable first, then inventory
-  const hotelStatus = getHotelStatus(hotel, room, inventoryData, checkinDate, bookingType);
+  // UPDATED: Check availability using hotel roomAvailable first, then inventory, including hourly closures
+  const hotelStatus = getHotelStatus(hotel, room, inventoryData, checkinDate, bookingType, hourlyClosures, checkinTime);
   const isAvailable = hotelStatus.isAvailable;
 
   // Get base rate considering inventory (inventory first, then room)
@@ -551,23 +680,23 @@ const toCdn = (url?: string) => {
   // Get hourly options with inventory pricing (inventory first, then room)
   const hourlyOptions = bookingType === "hourly"
     ? [
-      { 
-        key: "3", 
-        label: "3 Hrs", 
+      {
+        key: "3",
+        label: "3 Hrs",
         slot: 'rateFor3Hour',
         rate: getInventoryPrice(room, inventoryData, checkinDate, 'rateFor3Hour'),
         available: isSlotAvailable(room, inventoryData, checkinDate, 'rateFor3Hour', checkinTime)
       },
-      { 
-        key: "6", 
-        label: "6 Hrs", 
+      {
+        key: "6",
+        label: "6 Hrs",
         slot: 'rateFor6Hour',
         rate: getInventoryPrice(room, inventoryData, checkinDate, 'rateFor6Hour'),
         available: isSlotAvailable(room, inventoryData, checkinDate, 'rateFor6Hour', checkinTime)
       },
-      { 
-        key: "12", 
-        label: "12 Hrs", 
+      {
+        key: "12",
+        label: "12 Hrs",
         slot: 'rateFor12Hour',
         rate: getInventoryPrice(room, inventoryData, checkinDate, 'rateFor12Hour'),
         available: isSlotAvailable(room, inventoryData, checkinDate, 'rateFor12Hour', checkinTime)
@@ -609,6 +738,20 @@ const toCdn = (url?: string) => {
     });
   };
 
+  // Determine status color based on status type
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Closed':
+        return '#ff6b6b'; // Red for closed
+      case 'Sold Out':
+        return '#ff4444'; // Darker red for sold out
+      case 'Blocked':
+        return '#ffaa00'; // Orange for blocked
+      default:
+        return '#ff4444';
+    }
+  };
+
   return (
     <Card
       onClick={handleCardClick}
@@ -635,29 +778,28 @@ const toCdn = (url?: string) => {
     >
       {!isAvailable && (
         <Tooltip title={hotelStatus.reason}>
-          <Box sx={{ 
-            position: "absolute", 
-            top: 0, 
-            left: 0, 
-            right: 0, 
-            bottom: 0, 
-            zIndex: 2, 
-            background: "rgba(0,0,0,0.6)", 
-            display: "flex", 
-            justifyContent: "center", 
+          <Box sx={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 2,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            justifyContent: "center",
             alignItems: "center",
             borderRadius: "16px"
           }}>
-            <Box sx={{ 
-              background: hotelStatus.status === 'Sold Out' ? "#ff4444" : 
-                        hotelStatus.status === 'Blocked' ? "#ffaa00" : "#ff4444",
-              color: "white", 
-              px: 3, 
-              py: 1.5, 
-              borderRadius: "8px", 
-              fontWeight: "bold", 
-              fontSize: { xs: "13px", md: "14px" }, 
-              transform: "rotate(-3deg)", 
+            <Box sx={{
+              background: getStatusColor(hotelStatus.status),
+              color: "white",
+              px: 3,
+              py: 1.5,
+              borderRadius: "8px",
+              fontWeight: "bold",
+              fontSize: { xs: "13px", md: "14px" },
+              transform: "rotate(-3deg)",
               boxShadow: "0 4px 8px rgba(255, 77, 77, 0.3)",
               display: "flex",
               alignItems: "center",
@@ -670,76 +812,76 @@ const toCdn = (url?: string) => {
         </Tooltip>
       )}
 
-      <Box sx={{ 
-        width: { xs: "100%", md: 300 }, 
-        height: { xs: 200, md: "100%" }, 
-        minHeight: { xs: 200, md: 220 }, 
-        maxHeight: { xs: 200, md: 250 }, 
-        position: "relative", 
-        overflow: "hidden", 
-        flexShrink: 0 
+      <Box sx={{
+        width: { xs: "100%", md: 300 },
+        height: { xs: 200, md: "100%" },
+        minHeight: { xs: 200, md: 220 },
+        maxHeight: { xs: 200, md: 250 },
+        position: "relative",
+        overflow: "hidden",
+        flexShrink: 0
       }}>
-        <CardMedia 
-          component="img" 
-          sx={{ 
-            width: "100%", 
-            height: "100%", 
-            objectFit: "cover", 
-            transition: "transform 0.5s ease", 
-            filter: isAvailable ? "none" : "grayscale(80%) brightness(0.9)", 
-            opacity: isAvailable ? 1 : 0.7, 
-            "&:hover": { transform: isAvailable ? "scale(1.05)" : "none" } 
-          }} 
-          image={toCdn(hotel?.propertyImages?.[0] || "https://via.placeholder.com/400x250?text=No+Image")} 
-          alt={hotel?.propertyName} 
-          loading="lazy" 
+        <CardMedia
+          component="img"
+          sx={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transition: "transform 0.5s ease",
+            filter: isAvailable ? "none" : "grayscale(80%) brightness(0.9)",
+            opacity: isAvailable ? 1 : 0.7,
+            "&:hover": { transform: isAvailable ? "scale(1.05)" : "none" }
+          }}
+          image={toCdn(hotel?.propertyImages?.[0] || "https://via.placeholder.com/400x250?text=No+Image")}
+          alt={hotel?.propertyName}
+          loading="lazy"
         />
         {isPremium && (
-          <Box sx={{ 
-            position: "absolute", 
-            top: 12, 
-            left: 12, 
-            background: "linear-gradient(135deg, #FFD700, #FFA500)", 
-            color: "#000", 
-            px: 1.5, 
-            py: 0.5, 
-            borderRadius: "6px", 
-            fontSize: "10px", 
-            fontWeight: "bold", 
-            display: "flex", 
-            alignItems: "center", 
-            gap: "4px", 
-            boxShadow: "0 2px 8px rgba(0,0,0,0.2)", 
-            zIndex: 1 
+          <Box sx={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            background: "linear-gradient(135deg, #FFD700, #FFA500)",
+            color: "#000",
+            px: 1.5,
+            py: 0.5,
+            borderRadius: "6px",
+            fontSize: "10px",
+            fontWeight: "bold",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+            zIndex: 1
           }}>
             <Whatshot sx={{ fontSize: "12px" }} /> PREMIUM
           </Box>
         )}
       </Box>
 
-      <CardContent sx={{ 
-        padding: { xs: "16px", md: "20px 24px" }, 
-        width: "100%", 
-        display: "flex", 
-        flexDirection: "column", 
-        flex: 1, 
-        position: "relative" 
+      <CardContent sx={{
+        padding: { xs: "16px", md: "20px 24px" },
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        position: "relative"
       }}>
         {isPremium && (
           <Box sx={{ width: "fit-content", mb: 1.5 }}>
-            <Typography sx={{ 
-              fontWeight: 700, 
-              color: "#000", 
-              width: "fit-content", 
-              px: 1.5, 
-              py: 0.5, 
-              borderRadius: "6px", 
-              fontSize: "10px", 
-              background: "linear-gradient(135deg, #FFD700, #FFA500)", 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "4px", 
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)" 
+            <Typography sx={{
+              fontWeight: 700,
+              color: "#000",
+              width: "fit-content",
+              px: 1.5,
+              py: 0.5,
+              borderRadius: "6px",
+              fontSize: "10px",
+              background: "linear-gradient(135deg, #FFD700, #FFA500)",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
             }}>
               <Whatshot sx={{ fontSize: "12px" }} /> Huts4u PREMIUM
             </Typography>
@@ -747,80 +889,80 @@ const toCdn = (url?: string) => {
         )}
 
         <Box sx={{ mb: 1.5 }}>
-          <Typography sx={{ 
-            fontSize: { xs: "17px", md: "20px" }, 
-            fontWeight: 700, 
-            color: isAvailable ? color.firstColor : "#666", 
-            display: "-webkit-box", 
-            overflow: "hidden", 
-            textOverflow: "ellipsis", 
-            WebkitLineClamp: 1, 
-            WebkitBoxOrient: "vertical", 
-            lineHeight: 1.2 
+          <Typography sx={{
+            fontSize: { xs: "17px", md: "20px" },
+            fontWeight: 700,
+            color: isAvailable ? color.firstColor : "#666",
+            display: "-webkit-box",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: "vertical",
+            lineHeight: 1.2
           }}>
             {hotel?.propertyName}
           </Typography>
-          <Typography sx={{ 
-            fontFamily: "CustomFontSB", 
-            fontSize: { xs: "12px", md: "14px" }, 
-            color: isAvailable ? "#666" : "#888", 
-            display: "-webkit-box", 
-            overflow: "hidden", 
-            textOverflow: "ellipsis", 
-            WebkitLineClamp: 1, 
-            WebkitBoxOrient: "vertical", 
-            mt: 0.5, 
-            lineHeight: 1.3 
+          <Typography sx={{
+            fontFamily: "CustomFontSB",
+            fontSize: { xs: "12px", md: "14px" },
+            color: isAvailable ? "#666" : "#888",
+            display: "-webkit-box",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            WebkitLineClamp: 1,
+            WebkitBoxOrient: "vertical",
+            mt: 0.5,
+            lineHeight: 1.3
           }}>
             📍 {isMobile ? truncateAddress(hotel?.address || hotel?.city || "", 35) + "  BBSR" : truncateAddress(hotel?.address || hotel?.city || "", 35) + "  BBSR"}
           </Typography>
         </Box>
 
         {!isMobile && (
-          <Box sx={{ 
-            position: "absolute", 
-            top: { xs: "auto", md: 20 }, 
-            right: { xs: "auto", md: 24 }, 
-            display: "flex", 
-            flexDirection: "column", 
-            alignItems: "flex-end", 
-            mb: 1.5 
+          <Box sx={{
+            position: "absolute",
+            top: { xs: "auto", md: 20 },
+            right: { xs: "auto", md: 24 },
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            mb: 1.5
           }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: "4px", mb: 0.5 }}>
               {averageRating > 0 ? (
-                <Box sx={{ 
-                  background: getRatingColor(averageRating), 
-                  color: "#fff", 
-                  px: 1.2, 
-                  py: 0.6, 
-                  borderRadius: "8px", 
-                  fontSize: "14px", 
-                  fontWeight: 700, 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: "4px", 
-                  minWidth: "60px", 
-                  justifyContent: "center", 
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)" 
+                <Box sx={{
+                  background: getRatingColor(averageRating),
+                  color: "#fff",
+                  px: 1.2,
+                  py: 0.6,
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  minWidth: "60px",
+                  justifyContent: "center",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)"
                 }}>
                   {averageRating.toFixed(1)}
                   <StarRounded sx={{ fontSize: "14px" }} />
                 </Box>
               ) : (
-                <Box sx={{ 
-                  background: "rgba(0,0,0,0.05)", 
-                  color: "#888", 
-                  px: 1.2, 
-                  py: 0.6, 
-                  borderRadius: "8px", 
-                  fontSize: "14px", 
-                  fontWeight: 700, 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: "4px", 
-                  minWidth: "60px", 
-                  justifyContent: "center", 
-                  border: "1px dashed #ddd" 
+                <Box sx={{
+                  background: "rgba(0,0,0,0.05)",
+                  color: "#888",
+                  px: 1.2,
+                  py: 0.6,
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  minWidth: "60px",
+                  justifyContent: "center",
+                  border: "1px dashed #ddd"
                 }}>
                   N/A
                   <StarRounded sx={{ fontSize: "14px", color: "#aaa" }} />
@@ -839,93 +981,93 @@ const toCdn = (url?: string) => {
           </Box>
         )}
 
-        <Box sx={{ 
-          display: "flex", 
-          gap: 0.5, 
-          flexWrap: "wrap", 
-          mt: 1.5, 
-          mb: { xs: 2, md: 1.5 } 
+        <Box sx={{
+          display: "flex",
+          gap: 0.5,
+          flexWrap: "wrap",
+          mt: 1.5,
+          mb: { xs: 2, md: 1.5 }
         }}>
           {visibleAmenities.map((amenity: any, index: any) => (
-            <Chip 
-              key={index} 
-              label={amenity} 
-              icon={amenityIcons[amenity] || <AddCircleOutline />} 
-              size="small" 
-              sx={{ 
-                bgcolor: "rgba(75, 42, 173, 0.1)", 
-                fontSize: { xs: "10px", md: "11px" }, 
-                color: isAvailable ? "#4B2AAD" : "#aaa", 
-                height: "24px", 
-                border: "1px solid rgba(75, 42, 173, 0.2)", 
-                "& .MuiChip-icon": { 
-                  fontSize: { xs: "12px", md: "14px" }, 
-                  color: isAvailable ? "#4B2AAD" : "#aaa", 
-                  marginLeft: "4px", 
-                  marginRight: "-4px" 
-                } 
-              }} 
+            <Chip
+              key={index}
+              label={amenity}
+              icon={amenityIcons[amenity] || <AddCircleOutline />}
+              size="small"
+              sx={{
+                bgcolor: "rgba(75, 42, 173, 0.1)",
+                fontSize: { xs: "10px", md: "11px" },
+                color: isAvailable ? "#4B2AAD" : "#aaa",
+                height: "24px",
+                border: "1px solid rgba(75, 42, 173, 0.2)",
+                "& .MuiChip-icon": {
+                  fontSize: { xs: "12px", md: "14px" },
+                  color: isAvailable ? "#4B2AAD" : "#aaa",
+                  marginLeft: "4px",
+                  marginRight: "-4px"
+                }
+              }}
             />
           ))}
           {remainingAmenities > 0 && (
-            <Chip 
-              label={`+${remainingAmenities} more`} 
-              size="small" 
-              sx={{ 
-                bgcolor: isAvailable ? "rgba(0,0,0,0.05)" : "#f5f5f5", 
-                fontSize: { xs: "10px", md: "11px" }, 
-                color: isAvailable ? "#666" : "#aaa", 
-                height: "24px" 
-              }} 
+            <Chip
+              label={`+${remainingAmenities} more`}
+              size="small"
+              sx={{
+                bgcolor: isAvailable ? "rgba(0,0,0,0.05)" : "#f5f5f5",
+                fontSize: { xs: "10px", md: "11px" },
+                color: isAvailable ? "#666" : "#aaa",
+                height: "24px"
+              }}
             />
           )}
         </Box>
 
-        <Box sx={{ 
-          display: "flex", 
-          flexDirection: "column", 
-          gap: { xs: 2, md: 1 }, 
-          mt: "auto", 
-          pt: { xs: 3, md: 0 }, 
-          borderTop: { xs: "1px dashed #e0e0e0", md: "none" } 
+        <Box sx={{
+          display: "flex",
+          flexDirection: "column",
+          gap: { xs: 2, md: 1 },
+          mt: "auto",
+          pt: { xs: 3, md: 0 },
+          borderTop: { xs: "1px dashed #e0e0e0", md: "none" }
         }}>
           {isMobile && (
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 {averageRating > 0 ? (
-                  <Box sx={{ 
-                    background: getRatingColor(averageRating), 
-                    color: "#fff", 
-                    px: 1, 
-                    py: 0.5, 
-                    borderRadius: "6px", 
-                    fontSize: "13px", 
-                    fontWeight: 700, 
-                    display: "flex", 
-                    alignItems: "center", 
-                    gap: "4px", 
-                    minWidth: "55px", 
-                    justifyContent: "center", 
-                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)" 
+                  <Box sx={{
+                    background: getRatingColor(averageRating),
+                    color: "#fff",
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    minWidth: "55px",
+                    justifyContent: "center",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
                   }}>
                     {averageRating.toFixed(1)}
                     <StarRounded sx={{ fontSize: "13px" }} />
                   </Box>
                 ) : (
-                  <Box sx={{ 
-                    background: "rgba(0,0,0,0.05)", 
-                    color: "#888", 
-                    px: 1, 
-                    py: 0.5, 
-                    borderRadius: "6px", 
-                    fontSize: "13px", 
-                    fontWeight: 700, 
-                    display: "flex", 
-                    alignItems: "center", 
-                    gap: "4px", 
-                    minWidth: "55px", 
-                    justifyContent: "center", 
-                    border: "1px dashed #ddd" 
+                  <Box sx={{
+                    background: "rgba(0,0,0,0.05)",
+                    color: "#888",
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    minWidth: "55px",
+                    justifyContent: "center",
+                    border: "1px dashed #ddd"
                   }}>
                     N/A
                     <StarRounded sx={{ fontSize: "13px", color: "#aaa" }} />
@@ -962,48 +1104,48 @@ const toCdn = (url?: string) => {
 
                   return (
                     <>
-                      <Box sx={{ 
-                        display: "flex", 
-                        gap: { xs: 0.5, sm: 1 }, 
-                        mb: 2, 
-                        justifyContent: { xs: "flex-start", sm: "flex-start" }, 
-                        flexWrap: "nowrap", 
-                        overflowX: { xs: "auto", sm: "visible" }, 
-                        pb: { xs: 1, sm: 0 }, 
-                        "&::-webkit-scrollbar": { height: "4px" }, 
-                        "&::-webkit-scrollbar-track": { background: "#f1f1f1" }, 
-                        "&::-webkit-scrollbar-thumb": { background: "#ccc", borderRadius: "2px" } 
+                      <Box sx={{
+                        display: "flex",
+                        gap: { xs: 0.5, sm: 1 },
+                        mb: 2,
+                        justifyContent: { xs: "flex-start", sm: "flex-start" },
+                        flexWrap: "nowrap",
+                        overflowX: { xs: "auto", sm: "visible" },
+                        pb: { xs: 1, sm: 0 },
+                        "&::-webkit-scrollbar": { height: "4px" },
+                        "&::-webkit-scrollbar-track": { background: "#f1f1f1" },
+                        "&::-webkit-scrollbar-thumb": { background: "#ccc", borderRadius: "2px" }
                       }}>
                         {hourlyOptions.map((opt) => {
                           const isActive = opt.key === activeHours;
                           return (
-                            <Box 
-                              key={opt.key} 
-                              onClick={(e) => { 
+                            <Box
+                              key={opt.key}
+                              onClick={(e) => {
                                 e.stopPropagation();
                                 if (!isAvailable) return;
-                                handleHourChange(opt.key); 
-                              }} 
-                              sx={{ 
-                                flexShrink: 0, 
-                                textAlign: "center", 
-                                py: { xs: 0.75, sm: 1 }, 
-                                px: { xs: 0.75, sm: 1.5 }, 
-                                borderRadius: "8px", 
-                                cursor: isAvailable ? "pointer" : "not-allowed", 
-                                fontSize: { xs: "11px", sm: "12px", md: "13px" }, 
-                                fontWeight: 700, 
-                                background: isActive ? (isAvailable ? "#4B2AAD" : "#aaa") : "rgba(75, 42, 173, 0.1)", 
-                                color: isActive ? "#fff" : (isAvailable ? "#4B2AAD" : "#888"), 
-                                border: `1px solid ${isActive ? "#4B2AAD" : "rgba(75, 42, 173, 0.3)"}`, 
-                                transition: "all 0.2s ease", 
-                                opacity: isAvailable ? 1 : 0.6, 
-                                minWidth: { xs: "70px", sm: "80px" }, 
-                                whiteSpace: "nowrap", 
-                                "&:hover": isAvailable ? { 
-                                  transform: "translateY(-1px)", 
-                                  boxShadow: "0 2px 8px rgba(75, 42, 173, 0.3)" 
-                                } : {} 
+                                handleHourChange(opt.key);
+                              }}
+                              sx={{
+                                flexShrink: 0,
+                                textAlign: "center",
+                                py: { xs: 0.75, sm: 1 },
+                                px: { xs: 0.75, sm: 1.5 },
+                                borderRadius: "8px",
+                                cursor: isAvailable ? "pointer" : "not-allowed",
+                                fontSize: { xs: "11px", sm: "12px", md: "13px" },
+                                fontWeight: 700,
+                                background: isActive ? (isAvailable ? "#4B2AAD" : "#aaa") : "rgba(75, 42, 173, 0.1)",
+                                color: isActive ? "#fff" : (isAvailable ? "#4B2AAD" : "#888"),
+                                border: `1px solid ${isActive ? "#4B2AAD" : "rgba(75, 42, 173, 0.3)"}`,
+                                transition: "all 0.2s ease",
+                                opacity: isAvailable ? 1 : 0.6,
+                                minWidth: { xs: "70px", sm: "80px" },
+                                whiteSpace: "nowrap",
+                                "&:hover": isAvailable ? {
+                                  transform: "translateY(-1px)",
+                                  boxShadow: "0 2px 8px rgba(75, 42, 173, 0.3)"
+                                } : {}
                               }}
                             >
                               {opt.label}
@@ -1012,42 +1154,42 @@ const toCdn = (url?: string) => {
                         })}
                       </Box>
 
-                      <Box sx={{ 
-                        display: "flex", 
-                        flexDirection: { xs: "column", sm: "row" }, 
-                        justifyContent: "space-between", 
-                        alignItems: { xs: "stretch", sm: "center" }, 
-                        gap: { xs: 1.5, sm: 2, md: 3 } 
+                      <Box sx={{
+                        display: "flex",
+                        flexDirection: { xs: "column", sm: "row" },
+                        justifyContent: "space-between",
+                        alignItems: { xs: "stretch", sm: "center" },
+                        gap: { xs: 1.5, sm: 2, md: 3 }
                       }}>
                         <Box sx={{ flex: 1 }}>
-                          <Typography sx={{ 
-                            fontSize: { xs: "12px", md: "13px" }, 
-                            color: isAvailable ? "#666" : "#888", 
-                            mb: 0.5, 
-                            fontWeight: 500, 
-                            display: "flex", 
-                            alignItems: "center", 
-                            gap: 0.5, 
-                            flexWrap: "wrap" 
+                          <Typography sx={{
+                            fontSize: { xs: "12px", md: "13px" },
+                            color: isAvailable ? "#666" : "#888",
+                            mb: 0.5,
+                            fontWeight: 500,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            flexWrap: "wrap"
                           }}>
                             <span>{roomsCount} room{roomsCount > 1 ? "s" : ""}</span>
                             <span>•</span>
                             <span>{selectedOption.label}</span>
                           </Typography>
                           <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, flexWrap: "wrap" }}>
-                            <Typography sx={{ 
-                              fontSize: { xs: "20px", sm: "22px", md: "24px" }, 
-                              fontWeight: 800, 
-                              color: isAvailable ? color.firstColor : "#888", 
-                              lineHeight: 1 
+                            <Typography sx={{
+                              fontSize: { xs: "20px", sm: "22px", md: "24px" },
+                              fontWeight: 800,
+                              color: isAvailable ? color.firstColor : "#888",
+                              lineHeight: 1
                             }}>
                               {isAvailable ? formatINR(mainPrice) : "---"}
                             </Typography>
                             {isAvailable && (
-                              <Typography sx={{ 
-                                fontSize: { xs: "11px", md: "12px" }, 
-                                color: "#666", 
-                                fontWeight: 500 
+                              <Typography sx={{
+                                fontSize: { xs: "11px", md: "12px" },
+                                color: "#666",
+                                fontWeight: 500
                               }}>
                                 + {formatINR(gstPrice)} taxes & fees
                               </Typography>
@@ -1055,62 +1197,62 @@ const toCdn = (url?: string) => {
                           </Box>
                         </Box>
                         {isAvailable ? (
-                          <Box 
+                          <Box
                             onClick={(e) => {
                               e.stopPropagation();
                               handleCardClick();
                             }}
-                            sx={{ 
-                              background: "linear-gradient(135deg, #4B2AAD, #6C4BD3)", 
-                              color: "#fff", 
-                              px: { xs: 0, sm: 2.5, md: 3 }, 
-                              py: { xs: 0, sm: 1.25, md: 1.5 }, 
-                              borderRadius: "10px", 
-                              textAlign: "center", 
-                              minWidth: { xs: "40%", sm: "120px", md: "140px" }, 
-                              cursor: "pointer", 
-                              transition: "all 0.3s ease", 
-                              mt: { xs: 1, sm: 0 }, 
-                              marginRight: { xs: 3 }, 
-                              display: "flex", 
-                              alignItems: "center", 
-                              justifyContent: "center", 
-                              height: { xs: "44px", sm: "48px" }, 
-                              "&:hover": { 
-                                transform: "translateY(-2px)", 
-                                boxShadow: "0 4px 12px rgba(75, 42, 173, 0.4)" 
-                              } 
+                            sx={{
+                              background: "linear-gradient(135deg, #4B2AAD, #6C4BD3)",
+                              color: "#fff",
+                              px: { xs: 0, sm: 2.5, md: 3 },
+                              py: { xs: 0, sm: 1.25, md: 1.5 },
+                              borderRadius: "10px",
+                              textAlign: "center",
+                              minWidth: { xs: "40%", sm: "120px", md: "140px" },
+                              cursor: "pointer",
+                              transition: "all 0.3s ease",
+                              mt: { xs: 1, sm: 0 },
+                              marginRight: { xs: 3 },
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              height: { xs: "44px", sm: "48px" },
+                              "&:hover": {
+                                transform: "translateY(-2px)",
+                                boxShadow: "0 4px 12px rgba(75, 42, 173, 0.4)"
+                              }
                             }}
                           >
-                            <Typography sx={{ 
-                              fontSize: { xs: "14px", sm: "15px", md: "16px" }, 
-                              fontWeight: 700, 
-                              whiteSpace: "nowrap" 
+                            <Typography sx={{
+                              fontSize: { xs: "14px", sm: "15px", md: "16px" },
+                              fontWeight: 700,
+                              whiteSpace: "nowrap"
                             }}>
                               Book Now
                             </Typography>
                           </Box>
                         ) : (
-                          <Box sx={{ 
-                            background: "#e0e0e0", 
-                            color: "#888", 
-                            px: { xs: 0, sm: 2.5, md: 3 }, 
-                            py: { xs: 0, sm: 1.25, md: 1.5 }, 
-                            borderRadius: "10px", 
-                            textAlign: "center", 
-                            minWidth: { xs: "40%", sm: "120px", md: "140px" }, 
-                            cursor: "not-allowed", 
-                            mt: { xs: 1, sm: 0 }, 
-                            marginRight: { xs: 3 }, 
-                            display: "flex", 
-                            alignItems: "center", 
-                            justifyContent: "center", 
-                            height: { xs: "44px", sm: "48px" }, 
+                          <Box sx={{
+                            background: "#e0e0e0",
+                            color: "#888",
+                            px: { xs: 0, sm: 2.5, md: 3 },
+                            py: { xs: 0, sm: 1.25, md: 1.5 },
+                            borderRadius: "10px",
+                            textAlign: "center",
+                            minWidth: { xs: "40%", sm: "120px", md: "140px" },
+                            cursor: "not-allowed",
+                            mt: { xs: 1, sm: 0 },
+                            marginRight: { xs: 3 },
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            height: { xs: "44px", sm: "48px" },
                           }}>
-                            <Typography sx={{ 
-                              fontSize: { xs: "14px", sm: "15px", md: "16px" }, 
-                              fontWeight: 700, 
-                              whiteSpace: "nowrap" 
+                            <Typography sx={{
+                              fontSize: { xs: "14px", sm: "15px", md: "16px" },
+                              fontWeight: 700,
+                              whiteSpace: "nowrap"
                             }}>
                               {hotelStatus.status}
                             </Typography>
@@ -1121,70 +1263,70 @@ const toCdn = (url?: string) => {
                   );
                 })()
               ) : (
-                <Typography sx={{ 
-                  fontSize: "12px", 
-                  color: "#888", 
-                  textAlign: "center", 
-                  py: 2, 
-                  border: "1px dashed #ddd", 
-                  borderRadius: "8px", 
-                  background: "#f9f9f9" 
+                <Typography sx={{
+                  fontSize: "12px",
+                  color: "#888",
+                  textAlign: "center",
+                  py: 2,
+                  border: "1px dashed #ddd",
+                  borderRadius: "8px",
+                  background: "#f9f9f9"
                 }}>
                   Not available for hourly stay
                 </Typography>
               )}
             </Box>
           ) : (
-            <Box sx={{ 
-              display: "flex", 
-              flexDirection: { xs: "column", sm: "row" }, 
-              justifyContent: "space-between", 
-              alignItems: { xs: "stretch", sm: "center" }, 
-              gap: { xs: 1.5, sm: 2, md: 3 }, 
-              width: "100%" 
+            <Box sx={{
+              display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
+              justifyContent: "space-between",
+              alignItems: { xs: "stretch", sm: "center" },
+              gap: { xs: 1.5, sm: 2, md: 3 },
+              width: "100%"
             }}>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 {isAvailable && displayBasePlus700 > 0 && (
-                  <Typography sx={{ 
-                    fontSize: { xs: "12px", md: "14px" }, 
-                    color: isAvailable ? "#999" : "#aaa", 
-                    textDecoration: "line-through", 
-                    fontWeight: 500, 
-                    mb: 0.5 
+                  <Typography sx={{
+                    fontSize: { xs: "12px", md: "14px" },
+                    color: isAvailable ? "#999" : "#aaa",
+                    textDecoration: "line-through",
+                    fontWeight: 500,
+                    mb: 0.5
                   }}>
                     {formatINR(Math.round(displayBasePlus700))}
                   </Typography>
                 )}
 
                 <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, flexWrap: "wrap" }}>
-                  <Typography sx={{ 
-                    fontSize: { xs: "22px", sm: "24px", md: "26px" }, 
-                    color: isAvailable ? color.firstColor : "#888", 
-                    fontWeight: 800, 
-                    lineHeight: 1 
+                  <Typography sx={{
+                    fontSize: { xs: "22px", sm: "24px", md: "26px" },
+                    color: isAvailable ? color.firstColor : "#888",
+                    fontWeight: 800,
+                    lineHeight: 1
                   }}>
                     {isAvailable && totalBase + totalPlatform > 0 ? `${formatINR(Math.round(totalBase + totalPlatform))}` : "---"}
                   </Typography>
                   {isAvailable && totalFinal > 0 && (
-                    <Typography sx={{ 
-                      fontSize: { xs: "11px", md: "13px" }, 
-                      color: "#666", 
-                      fontWeight: 500 
+                    <Typography sx={{
+                      fontSize: { xs: "11px", md: "13px" },
+                      color: "#666",
+                      fontWeight: 500
                     }}>
                       + {formatINR(Math.round(totalGst))} taxes & fees
                     </Typography>
                   )}
                 </Box>
 
-                <Typography sx={{ 
-                  fontSize: { xs: "12px", md: "13px" }, 
-                  color: isAvailable ? "#666" : "#aaa", 
-                  mt: 1, 
-                  fontWeight: 500, 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: 0.5, 
-                  flexWrap: "wrap" 
+                <Typography sx={{
+                  fontSize: { xs: "12px", md: "13px" },
+                  color: isAvailable ? "#666" : "#aaa",
+                  mt: 1,
+                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                  flexWrap: "wrap"
                 }}>
                   <span>{roomsCount} room{roomsCount > 1 ? "s" : ""}</span>
                   {bookingType !== "hourly" && (
@@ -1197,62 +1339,62 @@ const toCdn = (url?: string) => {
               </Box>
 
               {isAvailable ? (
-                <Box 
+                <Box
                   onClick={(e) => {
                     e.stopPropagation();
                     handleCardClick();
                   }}
-                  sx={{ 
-                    background: "linear-gradient(135deg, #4B2AAD, #6C4BD3)", 
-                    color: "#fff", 
-                    px: { xs: 0, sm: 2.5, md: 3 }, 
-                    py: { xs: 0, sm: 1.25, md: 1.5 }, 
-                    borderRadius: "10px", 
-                    textAlign: "center", 
-                    minWidth: { xs: "40%", sm: "130px", md: "150px" }, 
-                    cursor: "pointer", 
-                    transition: "all 0.3s ease", 
-                    mt: { xs: 1, sm: 0 }, 
-                    marginRight: { xs: 3 }, 
-                    display: "flex", 
-                    alignItems: "center", 
-                    justifyContent: "center", 
-                    height: { xs: "44px", sm: "48px" }, 
-                    "&:hover": { 
-                      transform: "translateY(-2px)", 
-                      boxShadow: "0 4px 12px rgba(75, 42, 173, 0.4)" 
-                    } 
+                  sx={{
+                    background: "linear-gradient(135deg, #4B2AAD, #6C4BD3)",
+                    color: "#fff",
+                    px: { xs: 0, sm: 2.5, md: 3 },
+                    py: { xs: 0, sm: 1.25, md: 1.5 },
+                    borderRadius: "10px",
+                    textAlign: "center",
+                    minWidth: { xs: "40%", sm: "130px", md: "150px" },
+                    cursor: "pointer",
+                    transition: "all 0.3s ease",
+                    mt: { xs: 1, sm: 0 },
+                    marginRight: { xs: 3 },
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    height: { xs: "44px", sm: "48px" },
+                    "&:hover": {
+                      transform: "translateY(-2px)",
+                      boxShadow: "0 4px 12px rgba(75, 42, 173, 0.4)"
+                    }
                   }}
                 >
-                  <Typography sx={{ 
-                    fontSize: { xs: "14px", sm: "15px", md: "16px" }, 
-                    fontWeight: 700, 
-                    whiteSpace: "nowrap" 
+                  <Typography sx={{
+                    fontSize: { xs: "14px", sm: "15px", md: "16px" },
+                    fontWeight: 700,
+                    whiteSpace: "nowrap"
                   }}>
                     Book Now
                   </Typography>
                 </Box>
               ) : (
-                <Box sx={{ 
-                  background: "#e0e0e0", 
-                  color: "#888", 
-                  px: { xs: 0, sm: 2.5, md: 3 }, 
-                  py: { xs: 0, sm: 1.25, md: 1.5 }, 
-                  borderRadius: "10px", 
-                  textAlign: "center", 
-                  minWidth: { xs: "40%", sm: "130px", md: "150px" }, 
-                  cursor: "not-allowed", 
-                  mt: { xs: 1, sm: 0 }, 
-                  marginRight: { xs: 3 }, 
-                  display: "flex", 
-                  alignItems: "center", 
-                  justifyContent: "center", 
-                  height: { xs: "44px", sm: "48px" }, 
+                <Box sx={{
+                  background: "#e0e0e0",
+                  color: "#888",
+                  px: { xs: 0, sm: 2.5, md: 3 },
+                  py: { xs: 0, sm: 1.25, md: 1.5 },
+                  borderRadius: "10px",
+                  textAlign: "center",
+                  minWidth: { xs: "40%", sm: "130px", md: "150px" },
+                  cursor: "not-allowed",
+                  mt: { xs: 1, sm: 0 },
+                  marginRight: { xs: 3 },
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: { xs: "44px", sm: "48px" },
                 }}>
-                  <Typography sx={{ 
-                    fontSize: { xs: "14px", sm: "15px", md: "16px" }, 
-                    fontWeight: 700, 
-                    whiteSpace: "nowrap" 
+                  <Typography sx={{
+                    fontSize: { xs: "14px", sm: "15px", md: "16px" },
+                    fontWeight: 700,
+                    whiteSpace: "nowrap"
                   }}>
                     {hotelStatus.status}
                   </Typography>
@@ -1273,7 +1415,8 @@ const SearchResults = () => {
   const [filteredData, setFilteredData] = useState<any[]>([]);
   const [paginatedData, setPaginatedData] = useState<any[]>([]);
   const [allRatings, setAllRatings] = useState<any>(null);
-  const [inventoryData, setInventoryData] = useState<{[key: string]: any[]}>({});
+  const [inventoryData, setInventoryData] = useState<{ [key: string]: any[] }>({});
+  const [hourlyClosures, setHourlyClosures] = useState<HourlyClosure[]>([]); // Add hourly closures state
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1340,7 +1483,7 @@ const SearchResults = () => {
     if (isMobile) {
       setOpen(false);
     }
-    
+
     const newParams = new URLSearchParams(queryParams.toString());
     newParams.set("page", "1");
     navigate({ search: newParams.toString() }, { replace: true });
@@ -1348,7 +1491,7 @@ const SearchResults = () => {
 
   // Fetch inventory for rooms in a hotel
   const fetchHotelInventory = async (hotel: any, checkDate: string) => {
-    const inventoryByRoom: {[key: string]: any[]} = {};
+    const inventoryByRoom: { [key: string]: any[] } = {};
 
     if (!hotel.rooms || hotel.rooms.length === 0) {
       return inventoryByRoom;
@@ -1420,10 +1563,11 @@ const SearchResults = () => {
         setLoading(true);
 
         // Check cache first
-        if (isCacheValid() && dataCache.ratings) {
+        if (isCacheValid() && dataCache.ratings && dataCache.hourlyClosures) {
           console.log("Using cached data");
           setMergedData(dataCache.hotels);
           setAllRatings(dataCache.ratings);
+          setHourlyClosures(dataCache.hourlyClosures);
           setLoading(false);
           isFetchingRef.current = false;
           return;
@@ -1444,8 +1588,15 @@ const SearchResults = () => {
 
         setHotelIdList(hotelIds);
 
-        // STEP 2: Fetch ratings in parallel
-        const ratingsPromise = fetchAllRatings();
+        // STEP 2: Fetch ratings and hourly closures in parallel
+        const [ratingsData, closuresData] = await Promise.all([
+          fetchAllRatings(),
+          fetchHourlyClosures()
+        ]);
+
+        // Update cache with closures
+        dataCache.hourlyClosures = closuresData;
+        dataCache.ratings = ratingsData;
 
         // STEP 3: Fetch FIRST BATCH (current page hotels) immediately
         const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -1454,10 +1605,7 @@ const SearchResults = () => {
 
         console.log(`Fetching first batch: ${firstBatchIds.length} hotels`);
 
-        const [firstBatchHotels, ratingsData] = await Promise.all([
-          fetchHotelBatch(firstBatchIds, 0, firstBatchIds.length),
-          ratingsPromise
-        ]);
+        const firstBatchHotels = await fetchHotelBatch(firstBatchIds, 0, firstBatchIds.length);
 
         // Update loaded hotel IDs
         setLoadedHotelIds(new Set(firstBatchIds));
@@ -1476,17 +1624,17 @@ const SearchResults = () => {
         const inventoryMap = inventoryResults.reduce((acc, { hotelId, inventory }) => {
           acc[hotelId] = inventory;
           return acc;
-        }, {} as {[key: string]: any});
+        }, {} as { [key: string]: any });
 
         setInventoryData(inventoryMap);
 
         // STEP 5: Immediately show first batch
         setMergedData(firstBatchCombined);
         setAllRatings(ratingsData);
+        setHourlyClosures(closuresData);
         setLoading(false);
 
         // Update cache
-        dataCache.ratings = ratingsData;
         dataCache.hotels = [...firstBatchCombined];
         dataCache.lastFetched = Date.now();
 
@@ -1524,7 +1672,7 @@ const SearchResults = () => {
                 const batchInventoryMap = batchInventoryResults.reduce((acc, { hotelId, inventory }) => {
                   acc[hotelId] = inventory;
                   return acc;
-                }, {} as {[key: string]: any});
+                }, {} as { [key: string]: any });
 
                 // Update inventory data
                 setInventoryData(prev => ({
@@ -1584,245 +1732,246 @@ const SearchResults = () => {
 
   // Filter data based on search parameters
   useEffect(() => {
-   const filterProperties = () => {
-  const locationFilter = queryParams.get("location") || "";
-  const bookingType = queryParams.get("bookingType");
-  const bookingHours = queryParams.get("bookingHours") || "3";
-  const sortByFilter = queryParams.get("sortBy");
-  const maxBudget = Number(queryParams.get("maxBudget")) || 20000;
-  const minBudget = Number(queryParams.get("minBudget")) || 100;
-  const checkinDate = queryParams.get("checkinDate") || dayjs().format('YYYY-MM-DD');
+    const filterProperties = () => {
+      const locationFilter = queryParams.get("location") || "";
+      const bookingType = queryParams.get("bookingType");
+      const bookingHours = queryParams.get("bookingHours") || "3";
+      const sortByFilter = queryParams.get("sortBy");
+      const maxBudget = Number(queryParams.get("maxBudget")) || 20000;
+      const minBudget = Number(queryParams.get("minBudget")) || 100;
+      const checkinDate = queryParams.get("checkinDate") || dayjs().format('YYYY-MM-DD');
+      const checkinTime = queryParams.get("time") || "";
 
-  const nights = bookingType === "hourly" ? 1 : Math.max(1, Number(queryParams.get("nights")) || 1);
+      const nights = bookingType === "hourly" ? 1 : Math.max(1, Number(queryParams.get("nights")) || 1);
 
-  const getLowestRate = (hotel: any) => {
-    const roomInventory = inventoryData[hotel.id]?.[hotel.rooms?.[0]?.id] || [];
-    const baseRate = getBaseRate(hotel, roomInventory, checkinDate, bookingType || "fullDay");
-    if (!baseRate) return Infinity;
+      const getLowestRate = (hotel: any) => {
+        const roomInventory = inventoryData[hotel.id]?.[hotel.rooms?.[0]?.id] || [];
+        const baseRate = getBaseRate(hotel, roomInventory, checkinDate, bookingType || "fullDay", checkinTime);
+        if (!baseRate) return Infinity;
 
-    const perUnitFinal = calculatePriceBreakdown(baseRate).finalPrice;
-    const multiplier = nights;
-    return perUnitFinal * multiplier;
-  };
+        const perUnitFinal = calculatePriceBreakdown(baseRate).finalPrice;
+        const multiplier = nights;
+        return perUnitFinal * multiplier;
+      };
 
-  // Debug: Check how many hotels have hourly stay type
-  console.group('🔍 Hotel Stay Type Analysis');
-  const hourlyHotels = mergedData.filter(hotel => hotel?.rooms?.[0]?.stayType === "Hourly");
-  console.log(`Total hotels: ${mergedData.length}`);
-  console.log(`Hotels with stayType="Hourly": ${hourlyHotels.length}`);
-  console.log(`Hotels with stayType="Overnight": ${mergedData.filter(hotel => hotel?.rooms?.[0]?.stayType === "Overnight").length}`);
-  console.log(`Hotels with no stayType: ${mergedData.filter(hotel => !hotel?.rooms?.[0]?.stayType).length}`);
-  
-  // Log all hourly hotels for debugging
-  hourlyHotels.forEach((hotel, index) => {
-    console.log(`${index + 1}. ${hotel.propertyName} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
-  });
-  console.groupEnd();
+      // Debug: Check how many hotels have hourly stay type
+      console.group('🔍 Hotel Stay Type Analysis');
+      const hourlyHotels = mergedData.filter(hotel => hotel?.rooms?.[0]?.stayType === "Hourly");
+      console.log(`Total hotels: ${mergedData.length}`);
+      console.log(`Hotels with stayType="Hourly": ${hourlyHotels.length}`);
+      console.log(`Hotels with stayType="Overnight": ${mergedData.filter(hotel => hotel?.rooms?.[0]?.stayType === "Overnight").length}`);
+      console.log(`Hotels with no stayType: ${mergedData.filter(hotel => !hotel?.rooms?.[0]?.stayType).length}`);
 
-  // First, filter by booking type
-  let filteredHotels = mergedData.filter((hotel: any) => {
-    if (bookingType === "fullDay") {
-      const isOvernightStay = hotel?.rooms?.[0]?.stayType === "Overnight";
-      const isHotelType = hotel.propertyType === "Hotel";
-      return isHotelType && isOvernightStay;
-    }
-    
-    if (bookingType === "hourly") {
-      // Show ONLY hotels with hourly stay type
-      const hasHourlyStay = hotel?.rooms?.[0]?.stayType === "Hourly";
-       console.log(hasHourlyStay)
-      if (!hasHourlyStay) {
-        console.log(`❌ Filtered out: ${hotel.propertyName} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
+      // Log all hourly hotels for debugging
+      hourlyHotels.forEach((hotel, index) => {
+        console.log(`${index + 1}. ${hotel.propertyName} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
+      });
+      console.groupEnd();
+
+      // First, filter by booking type
+      let filteredHotels = mergedData.filter((hotel: any) => {
+        if (bookingType === "fullDay") {
+          const isOvernightStay = hotel?.rooms?.[0]?.stayType === "Overnight";
+          const isHotelType = hotel.propertyType === "Hotel";
+          return isHotelType && isOvernightStay;
+        }
+
+        if (bookingType === "hourly") {
+          // Show ONLY hotels with hourly stay type
+          const hasHourlyStay = hotel?.rooms?.[0]?.stayType === "Hourly";
+          console.log(hasHourlyStay)
+          if (!hasHourlyStay) {
+            console.log(`❌ Filtered out: ${hotel.propertyName} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
+            return false;
+          }
+
+          // Check hotel availability
+          const hotelRoomAvailable = hotel?.roomAvailable || "Available";
+          if (hotelRoomAvailable === "Unavailable") {
+            console.log(`⚠️ Sold out but showing: ${hotel.propertyName}`);
+            return true; // Still show but as sold out
+          }
+
+          console.log(`✅ Showing hourly hotel: ${hotel.propertyName}`);
+          return true;
+        }
+
+        if (bookingType === "villa") {
+          return hotel.propertyType === "Villa";
+        }
+
         return false;
-      }
+      });
 
-      // Check hotel availability
-      const hotelRoomAvailable = hotel?.roomAvailable || "Available";
-      if (hotelRoomAvailable === "Unavailable") {
-        console.log(`⚠️ Sold out but showing: ${hotel.propertyName}`);
-        return true; // Still show but as sold out
-      }
-      
-      console.log(`✅ Showing hourly hotel: ${hotel.propertyName}`);
-      return true;
-    }
-    
-    if (bookingType === "villa") {
-      return hotel.propertyType === "Villa";
-    }
-    
-    return false;
-  });
+      console.log(`📊 After stay type filter: ${filteredHotels.length} hotels`);
 
-  console.log(`📊 After stay type filter: ${filteredHotels.length} hotels`);
+      // Budget filter - but for sold out hotels, still show them
+      filteredHotels = filteredHotels.filter((hotel: any) => {
+        const price = getLowestRate(hotel);
+        const hotelRoomAvailable = hotel?.roomAvailable || "Available";
 
-  // Budget filter - but for sold out hotels, still show them
-  filteredHotels = filteredHotels.filter((hotel: any) => {
-    const price = getLowestRate(hotel);
-    const hotelRoomAvailable = hotel?.roomAvailable || "Available";
-    
-    // For sold out hotels, still show them (they'll be marked as sold out)
-    if (hotelRoomAvailable === "Unavailable") {
-      return true;
-    }
-    
-    // For available hotels, apply budget filter
-    const isInBudget = price >= minBudget && price <= maxBudget && price !== Infinity;
-    if (!isInBudget) {
-      console.log(`💰 Filtered by budget: ${hotel.propertyName} - price: ${price}`);
-    }
-    return isInBudget;
-  });
+        // For sold out hotels, still show them (they'll be marked as sold out)
+        if (hotelRoomAvailable === "Unavailable") {
+          return true;
+        }
 
-  console.log(`📊 After budget filter: ${filteredHotels.length} hotels`);
+        // For available hotels, apply budget filter
+        const isInBudget = price >= minBudget && price <= maxBudget && price !== Infinity;
+        if (!isInBudget) {
+          console.log(`💰 Filtered by budget: ${hotel.propertyName} - price: ${price}`);
+        }
+        return isInBudget;
+      });
 
-  // Add search relevance score for ALL hotels
-  filteredHotels = filteredHotels.map((hotel: any) => {
-    let relevanceScore = 0;
-    let isExactMatch = false;
-    
-    if (locationFilter.trim() !== "") {
-      const searchTerm = locationFilter.toLowerCase().trim();
-      const searchText = (hotel.propertyName || hotel.address || hotel.city || "").toLowerCase();
-      const filterWords = searchTerm.split(/[,\s]+/).map((word) => word.trim());
+      console.log(`📊 After budget filter: ${filteredHotels.length} hotels`);
 
-      // Calculate relevance score
-      filterWords.forEach(word => {
-        if (searchText.includes(word)) {
-          relevanceScore += 5;
-          
-          // Exact match in property name gets highest priority
-          if (hotel.propertyName?.toLowerCase().includes(word)) {
-            relevanceScore += 20;
+      // Add search relevance score for ALL hotels
+      filteredHotels = filteredHotels.map((hotel: any) => {
+        let relevanceScore = 0;
+        let isExactMatch = false;
+
+        if (locationFilter.trim() !== "") {
+          const searchTerm = locationFilter.toLowerCase().trim();
+          const searchText = (hotel.propertyName || hotel.address || hotel.city || "").toLowerCase();
+          const filterWords = searchTerm.split(/[,\s]+/).map((word) => word.trim());
+
+          // Calculate relevance score
+          filterWords.forEach(word => {
+            if (searchText.includes(word)) {
+              relevanceScore += 5;
+
+              // Exact match in property name gets highest priority
+              if (hotel.propertyName?.toLowerCase().includes(word)) {
+                relevanceScore += 20;
+              }
+
+              // Exact match in address gets medium priority
+              if (hotel.address?.toLowerCase().includes(word)) {
+                relevanceScore += 15;
+              }
+
+              // Check for exact matches
+              if (searchText === word ||
+                hotel.propertyName?.toLowerCase() === word ||
+                hotel.address?.toLowerCase() === word) {
+                relevanceScore += 30;
+                isExactMatch = true;
+              }
+
+              // Check if word starts with search term
+              if (hotel.propertyName?.toLowerCase().startsWith(word)) {
+                relevanceScore += 25;
+              }
+
+              // Check if address starts with search term
+              if (hotel.address?.toLowerCase().startsWith(word)) {
+                relevanceScore += 20;
+              }
+            }
+          });
+
+          // Bonus for hotels that match the entire search phrase
+          if (searchText.includes(searchTerm)) {
+            relevanceScore += 40;
           }
-          
-          // Exact match in address gets medium priority
-          if (hotel.address?.toLowerCase().includes(word)) {
-            relevanceScore += 15;
-          }
-          
-          // Check for exact matches
-          if (searchText === word || 
-              hotel.propertyName?.toLowerCase() === word ||
-              hotel.address?.toLowerCase() === word) {
-            relevanceScore += 30;
-            isExactMatch = true;
-          }
-          
-          // Check if word starts with search term
-          if (hotel.propertyName?.toLowerCase().startsWith(word)) {
-            relevanceScore += 25;
-          }
-          
-          // Check if address starts with search term
-          if (hotel.address?.toLowerCase().startsWith(word)) {
-            relevanceScore += 20;
+
+          // Check if hotel name contains search term
+          if (hotel.propertyName?.toLowerCase().includes(searchTerm)) {
+            relevanceScore += 35;
           }
         }
+
+        // Check hotel availability for sorting
+        const hotelRoomAvailable = hotel?.roomAvailable || "Available";
+        const isAvailable = hotelRoomAvailable !== "Unavailable";
+
+        // Base score for all hotels
+        const baseScore = 1;
+
+        return {
+          ...hotel,
+          _relevanceScore: baseScore + relevanceScore,
+          _isExactMatch: isExactMatch,
+          _hasLocationMatch: relevanceScore > 0,
+          _isAvailable: isAvailable,
+        };
       });
-      
-      // Bonus for hotels that match the entire search phrase
-      if (searchText.includes(searchTerm)) {
-        relevanceScore += 40;
-      }
-      
-      // Check if hotel name contains search term
-      if (hotel.propertyName?.toLowerCase().includes(searchTerm)) {
-        relevanceScore += 35;
-      }
-    }
-    
-    // Check hotel availability for sorting
-    const hotelRoomAvailable = hotel?.roomAvailable || "Available";
-    const isAvailable = hotelRoomAvailable !== "Unavailable";
-    
-    // Base score for all hotels
-    const baseScore = 1;
-    
-    return {
-      ...hotel,
-      _relevanceScore: baseScore + relevanceScore,
-      _isExactMatch: isExactMatch,
-      _hasLocationMatch: relevanceScore > 0,
-      _isAvailable: isAvailable,
+
+      // Sorting logic - prioritize available hotels first, then exact matches
+      filteredHotels.sort((a: any, b: any) => {
+        // First, sort by availability (available hotels first)
+        if (a._isAvailable && !b._isAvailable) return -1;
+        if (b._isAvailable && !a._isAvailable) return 1;
+
+        // Then by exact match
+        if (a._isExactMatch && !b._isExactMatch) return -1;
+        if (b._isExactMatch && !a._isExactMatch) return 1;
+
+        // Then by location match
+        if (a._hasLocationMatch && !b._hasLocationMatch) return -1;
+        if (b._hasLocationMatch && !a._hasLocationMatch) return 1;
+
+        // Then by relevance score (highest first)
+        const relevanceDiff = (b._relevanceScore || 0) - (a._relevanceScore || 0);
+        if (relevanceDiff !== 0) return relevanceDiff;
+
+        // Then apply other sorting criteria
+        if (sortByFilter === "rating") {
+          return (Number(b?.ratings?.rating) || 0) - (Number(a?.ratings?.rating) || 0);
+        } else if (sortByFilter === "lowToHigh") {
+          return getLowestRate(a) - getLowestRate(b);
+        } else if (sortByFilter === "highToLow") {
+          return getLowestRate(b) - getLowestRate(a);
+        } else if (sortByFilter === "popularity") {
+          return (Number(b?.reviews) || 0) - (Number(a?.reviews) || 0);
+        } else {
+          // Default: relevance score then price
+          return getLowestRate(a) - getLowestRate(b);
+        }
+      });
+
+      // Prepare pricing data
+      const roomsCount = Math.max(1, Number(queryParams.get("rooms")) || 1);
+      const hotelsWithPrices = filteredHotels.map((hotel: any) => {
+        const roomInventory = inventoryData[hotel.id]?.[hotel.rooms?.[0]?.id] || [];
+        const baseRate = getBaseRate(hotel, roomInventory, checkinDate, bookingType || "fullDay", checkinTime);
+        const breakdown = calculatePriceBreakdown(baseRate);
+        const perRoomFinal = breakdown.finalPrice;
+        const nights = bookingType === "hourly" ? 1 : Math.max(1, Number(queryParams.get("nights")) || 1);
+        const multiplier = roomsCount * nights;
+
+        return {
+          ...hotel,
+          _pricing: {
+            perRoomFinal,
+            perRoomBase: breakdown.basePrice,
+            perRoomPlatform: breakdown.platformFee,
+            perRoomGstTotal: breakdown.gstTotal,
+            roomsCount,
+            nights,
+            totalFinal: +(perRoomFinal * multiplier),
+            totalBase: +(breakdown.basePrice * multiplier),
+            totalPlatform: +(breakdown.platformFee * multiplier),
+            totalGst: +(breakdown.gstTotal * multiplier),
+          },
+        };
+      });
+
+      console.log(`📊 Final result: ${hotelsWithPrices.length} hotels`);
+
+      // Detailed breakdown
+      const availableHotels = hotelsWithPrices.filter(h => h._isAvailable);
+      const soldOutHotels = hotelsWithPrices.filter(h => !h._isAvailable);
+      console.log(`✅ Available: ${availableHotels.length}`);
+      console.log(`❌ Sold out: ${soldOutHotels.length}`);
+
+      // Log all final hotels
+      hotelsWithPrices.forEach((hotel, index) => {
+        console.log(`${index + 1}. ${hotel.propertyName} - ${hotel._isAvailable ? 'Available' : 'Sold Out'} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
+      });
+
+      return hotelsWithPrices;
     };
-  });
-
-  // Sorting logic - prioritize available hotels first, then exact matches
-  filteredHotels.sort((a: any, b: any) => {
-    // First, sort by availability (available hotels first)
-    if (a._isAvailable && !b._isAvailable) return -1;
-    if (b._isAvailable && !a._isAvailable) return 1;
-    
-    // Then by exact match
-    if (a._isExactMatch && !b._isExactMatch) return -1;
-    if (b._isExactMatch && !a._isExactMatch) return 1;
-    
-    // Then by location match
-    if (a._hasLocationMatch && !b._hasLocationMatch) return -1;
-    if (b._hasLocationMatch && !a._hasLocationMatch) return 1;
-    
-    // Then by relevance score (highest first)
-    const relevanceDiff = (b._relevanceScore || 0) - (a._relevanceScore || 0);
-    if (relevanceDiff !== 0) return relevanceDiff;
-
-    // Then apply other sorting criteria
-    if (sortByFilter === "rating") {
-      return (Number(b?.ratings?.rating) || 0) - (Number(a?.ratings?.rating) || 0);
-    } else if (sortByFilter === "lowToHigh") {
-      return getLowestRate(a) - getLowestRate(b);
-    } else if (sortByFilter === "highToLow") {
-      return getLowestRate(b) - getLowestRate(a);
-    } else if (sortByFilter === "popularity") {
-      return (Number(b?.reviews) || 0) - (Number(a?.reviews) || 0);
-    } else {
-      // Default: relevance score then price
-      return getLowestRate(a) - getLowestRate(b);
-    }
-  });
-
-  // Prepare pricing data
-  const roomsCount = Math.max(1, Number(queryParams.get("rooms")) || 1);
-  const hotelsWithPrices = filteredHotels.map((hotel: any) => {
-    const roomInventory = inventoryData[hotel.id]?.[hotel.rooms?.[0]?.id] || [];
-    const baseRate = getBaseRate(hotel, roomInventory, checkinDate, bookingType || "fullDay");
-    const breakdown = calculatePriceBreakdown(baseRate);
-    const perRoomFinal = breakdown.finalPrice;
-    const nights = bookingType === "hourly" ? 1 : Math.max(1, Number(queryParams.get("nights")) || 1);
-    const multiplier = roomsCount * nights;
-
-    return {
-      ...hotel,
-      _pricing: {
-        perRoomFinal,
-        perRoomBase: breakdown.basePrice,
-        perRoomPlatform: breakdown.platformFee,
-        perRoomGstTotal: breakdown.gstTotal,
-        roomsCount,
-        nights,
-        totalFinal: +(perRoomFinal * multiplier),
-        totalBase: +(breakdown.basePrice * multiplier),
-        totalPlatform: +(breakdown.platformFee * multiplier),
-        totalGst: +(breakdown.gstTotal * multiplier),
-      },
-    };
-  });
-
-  console.log(`📊 Final result: ${hotelsWithPrices.length} hourly hotels`);
-  
-  // Detailed breakdown
-  const availableHotels = hotelsWithPrices.filter(h => h._isAvailable);
-  const soldOutHotels = hotelsWithPrices.filter(h => !h._isAvailable);
-  console.log(`✅ Available: ${availableHotels.length}`);
-  console.log(`❌ Sold out: ${soldOutHotels.length}`);
-  
-  // Log all final hotels
-  hotelsWithPrices.forEach((hotel, index) => {
-    console.log(`${index + 1}. ${hotel.propertyName} - ${hotel._isAvailable ? 'Available' : 'Sold Out'} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
-  });
-  
-  return hotelsWithPrices;
-};
 
     if (!loading) {
       const filtered = filterProperties();
@@ -1840,7 +1989,7 @@ const SearchResults = () => {
       const paginated = filtered.slice(startIndex, endIndex);
       setPaginatedData(paginated);
     }
-  }, [loading, mergedData, location.search, currentPage, inventoryData]);
+  }, [loading, mergedData, location.search, currentPage, inventoryData, hourlyClosures]);
 
   // Handle page change with preloading
   const handlePageChange = useCallback((event: React.ChangeEvent<unknown>, value: number) => {
@@ -1879,7 +2028,7 @@ const SearchResults = () => {
             const inventoryMap = inventoryResults.reduce((acc, { hotelId, inventory }) => {
               acc[hotelId] = inventory;
               return acc;
-            }, {} as {[key: string]: any});
+            }, {} as { [key: string]: any });
 
             // Update inventory data
             setInventoryData(prev => ({
@@ -2140,16 +2289,16 @@ const SearchResults = () => {
       )}
     </Box>
   );
- const itemListSchema = {
-  "@context": "https://schema.org",
-  "@type": "ItemList",
-  "itemListElement": paginatedData.map((hotel, index) => ({
-    "@type": "ListItem",
-    "position": index + 1,
-    "url": `https://huts4u.com/hotel/${hotel.id}`,
-    "name": hotel.propertyName
-  }))
-};
+  const itemListSchema = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "itemListElement": paginatedData.map((hotel, index) => ({
+      "@type": "ListItem",
+      "position": index + 1,
+      "url": `https://huts4u.com/hotel/${hotel.id}`,
+      "name": hotel.propertyName
+    }))
+  };
 
   return (
     <Box sx={{
@@ -2158,32 +2307,32 @@ const SearchResults = () => {
       minHeight: "100vh",
     }}>
       <Helmet>
-  <title>Search Hotels in Bhubaneswar | Huts4u</title>
+        <title>Search Hotels in Bhubaneswar | Huts4u</title>
 
-  <meta
-    name="description"
-    content="Search and book hourly hotels in Bhubaneswar quickly. Find hotels near you for short stays, business trips, or leisure visits."
-  />
+        <meta
+          name="description"
+          content="Search and book hourly hotels in Bhubaneswar quickly. Find hotels near you for short stays, business trips, or leisure visits."
+        />
 
-  <link rel="canonical" href="https://huts4u.com/search" />
+        <link rel="canonical" href="https://huts4u.com/search" />
 
-  {/* WebPage Schema */}
-  <script type="application/ld+json">
-    {JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "WebPage",
-      "name": "Search Hotels",
-      "url": "https://huts4u.com/search"
-    })}
-  </script>
+        {/* WebPage Schema */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": "Search Hotels",
+            "url": "https://huts4u.com/search"
+          })}
+        </script>
 
-  {/* ItemList Schema (HOTEL LISTING) */}
-  {paginatedData.length > 0 && (
-    <script type="application/ld+json">
-      {JSON.stringify(itemListSchema)}
-    </script>
-  )}
-</Helmet>
+        {/* ItemList Schema (HOTEL LISTING) */}
+        {paginatedData.length > 0 && (
+          <script type="application/ld+json">
+            {JSON.stringify(itemListSchema)}
+          </script>
+        )}
+      </Helmet>
 
 
       <SearchSection />
@@ -2217,7 +2366,7 @@ const SearchResults = () => {
                   borderBottom: "1px solid #eee",
                 }}
               >
-                <Typography variant="h5" sx={{  
+                <Typography variant="h5" sx={{
                   background: "linear-gradient(135deg, #f3eee1, #e8e0cf)",
                   width: "fit-content",
                   borderRadius: "8px",
@@ -2306,7 +2455,7 @@ const SearchResults = () => {
                 >
                   Filter & Sort
                 </CustomButton>
-                
+
               </Box>
             )}
           </Box>
@@ -2323,7 +2472,7 @@ const SearchResults = () => {
                   const hotelId = hotel.id;
                   const hotelRatings = getRatingsForHotel(allRatings, hotelId);
                   const roomInventory = inventoryData[hotelId]?.[hotel.rooms?.[0]?.id] || [];
-                  
+
                   return (
                     <HotelCard
                       key={hotel.id}
@@ -2332,6 +2481,7 @@ const SearchResults = () => {
                       isMobile={isMobile}
                       hotelRatings={hotelRatings}
                       inventoryData={roomInventory}
+                      hourlyClosures={hourlyClosures} // Pass closures to HotelCard
                     />
                   );
                 })}

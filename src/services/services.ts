@@ -311,3 +311,12 @@ export function deleteGST(id: any, userId: any) {
     },
   });
 }
+
+export function getHotelMeals(payLoad:any){
+    return client.post(`/Meal/search-record/`,payLoad)
+}
+
+export function  getHourlyClosures(payLoad:any){
+    return client.post(`/HotelHourly/search-record/`,payLoad)
+}
+

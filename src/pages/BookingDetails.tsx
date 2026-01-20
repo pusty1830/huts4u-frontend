@@ -39,38 +39,38 @@ const calculateInvoiceBreakdown = (finalAmount: number) => {
   const discountPercentage = 0.05; // 5% discount
   const serviceChargePercentage = 0.13; // 13% of Base Price WITH GST
   const convenienceFeePercentage = 0.02; // 2% convenience fee
-  
+
   // Step 1: Calculate subtotal before discount
   const subtotalBeforeDiscount = round2(finalAmount / (1 - discountPercentage));
   const discountAmount = round2(subtotalBeforeDiscount * discountPercentage);
-  
+
   // Step 2: We need to find Base Price (x) that satisfies:
   const basePriceExclGST = round2(subtotalBeforeDiscount / 1.23965);
-  
+
   // Now calculate all components
   // Base Price with 5% GST
   const baseCGST = round2(basePriceExclGST * 0.025);
   const baseSGST = round2(basePriceExclGST * 0.025);
   const baseTotal = round2(basePriceExclGST + baseCGST + baseSGST);
-  
+
   // Service Charges (13% of Base Total) with 18% GST
   const serviceChargesExclGST = round2(baseTotal * serviceChargePercentage);
   const serviceCGST = round2(serviceChargesExclGST * 0.09);
   const serviceSGST = round2(serviceChargesExclGST * 0.09);
   const serviceTotal = round2(serviceChargesExclGST + serviceCGST + serviceSGST);
-  
+
   // Convenience Fee (2% of core) with 18% GST
   const coreTotal = baseTotal + serviceTotal;
   const convenienceFeeExclGST = round2(coreTotal * convenienceFeePercentage);
   const convenienceCGST = round2(convenienceFeeExclGST * 0.09);
   const convenienceSGST = round2(convenienceFeeExclGST * 0.09);
   const convenienceTotal = round2(convenienceFeeExclGST + convenienceCGST + convenienceSGST);
-  
+
   // Recalculate subtotal to ensure accuracy
   const calculatedSubtotal = round2(baseTotal + serviceTotal + convenienceTotal);
   const calculatedDiscount = round2(calculatedSubtotal * discountPercentage);
   const calculatedFinal = round2(calculatedSubtotal - calculatedDiscount);
-  
+
   return {
     basePrice: basePriceExclGST,
     baseCGST: baseCGST,
@@ -97,11 +97,11 @@ const calculateInvoiceBreakdown = (finalAmount: number) => {
 const numberToWords = (amount: number) => {
   const single = [
     "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", 
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
     "Seventeen", "Eighteen", "Nineteen"
   ];
   const tens = [
-    "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", 
+    "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy",
     "Eighty", "Ninety"
   ];
 
@@ -155,16 +155,16 @@ const UserGstInfoSection: React.FC<{
 }> = ({ gstDetails, invoiceNumber, dated, bookingId }) => {
   const gstNumber = gstDetails.gstNumber || gstDetails.gstin || "";
   const legalName = gstDetails.legalName || gstDetails.companyName || "";
-  
+
   if (!gstNumber || !legalName) return null;
 
   return (
-    <Box sx={{ 
-      mb: 3, 
-      p: 2, 
-      backgroundColor: "#f5f5f5", 
+    <Box sx={{
+      mb: 3,
+      p: 2,
+      backgroundColor: "#f5f5f5",
       borderRadius: "4px",
-      fontSize: "11px" 
+      fontSize: "11px"
     }}>
       <Grid container spacing={1}>
         <Grid item xs={6} sm={3}>
@@ -214,11 +214,11 @@ const BookingDetails: React.FC = () => {
       if (!id) return;
       setLoading(true);
       try {
-        const Payload = { 
-          data: { filter: "", bookingId: id }, 
-          page: 0, 
-          pageSize: 1, 
-          order: [["createdAt", "DESC"]] 
+        const Payload = {
+          data: { filter: "", bookingId: id },
+          page: 0,
+          pageSize: 1,
+          order: [["createdAt", "DESC"]]
         };
         const res = await getAllMyBookings(Payload);
         const row = res?.data?.data?.rows?.[0];
@@ -239,10 +239,10 @@ const BookingDetails: React.FC = () => {
   const formatCurrency = (amount: number | string) => {
     if (amount === null || amount === undefined) return "₹0.00";
     const rupees = normalizeAmountToRupees(amount);
-    return rupees.toLocaleString("en-IN", { 
-      style: "currency", 
-      currency: "INR", 
-      minimumFractionDigits: 2 
+    return rupees.toLocaleString("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 2
     });
   };
 
@@ -252,14 +252,14 @@ const BookingDetails: React.FC = () => {
     try {
       const invoiceElement = invoiceRef.current;
       const clone = invoiceElement.cloneNode(true) as HTMLElement;
-      
+
       clone.style.width = "800px";
       clone.style.margin = "0 auto";
       clone.style.padding = "20px";
       clone.style.backgroundColor = "white";
       clone.style.color = "black";
       clone.style.fontFamily = "'Arial', sans-serif";
-      
+
       clone.style.position = "fixed";
       clone.style.left = "-9999px";
       clone.style.top = "0";
@@ -287,23 +287,23 @@ const BookingDetails: React.FC = () => {
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      
+
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      
+
       const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
       const imgX = (pdfWidth - imgWidth * ratio) / 2;
       const imgY = 5;
-      
+
       pdf.addImage(
-        imgData, 
-        "PNG", 
-        imgX, 
-        imgY, 
-        imgWidth * ratio, 
+        imgData,
+        "PNG",
+        imgX,
+        imgY,
+        imgWidth * ratio,
         imgHeight * ratio
       );
-      
+
       pdf.save(`HUTS4U-Invoice-${booking?.id || id}.pdf`);
       toast.success("Invoice downloaded successfully!");
     } catch (err) {
@@ -323,7 +323,7 @@ const BookingDetails: React.FC = () => {
   }
 
   // Calculate invoice amounts
-  const finalAmount = round2(normalizeAmountToRupees(booking.amountPaid ?? booking.amount ?? 0));
+  const finalAmount = round2(booking.amountPaid ?? booking.amount ?? 0);
   const breakdown = calculateInvoiceBreakdown(finalAmount);
 
   // Get GST details from booking object - handle both camelCase and PascalCase
@@ -331,12 +331,12 @@ const BookingDetails: React.FC = () => {
   const gstNumber = gstDetails.gstNumber || gstDetails.gstin || "";
   const legalName = gstDetails.legalName || gstDetails.companyName || "";
   const gstAddress = gstDetails.address || gstDetails.companyAddress || "";
-  
+
   // Check if we have GST details
   const hasGstDetails = gstNumber && legalName;
 
   const invoiceNumber = booking.invoiceNo || `HUTS-${booking.id}`;
-  const dated = booking.createdAt 
+  const dated = booking.createdAt
     ? new Date(booking.createdAt).toLocaleDateString("en-IN")
     : new Date().toLocaleDateString("en-IN");
   const amountInWords = booking.amountInWords || numberToWords(breakdown.finalAmount);
@@ -351,8 +351,8 @@ const BookingDetails: React.FC = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Button 
-        onClick={() => window.history.back()} 
+      <Button
+        onClick={() => window.history.back()}
         sx={{ mb: 3, textTransform: "none" }}
       >
         ← Back to Bookings
@@ -424,11 +424,11 @@ const BookingDetails: React.FC = () => {
               <Divider sx={{ my: 3 }} />
 
               <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-                <Button 
-                  variant="contained" 
-                  onClick={downloadInvoice} 
+                <Button
+                  variant="contained"
+                  onClick={downloadInvoice}
                   disabled={generatingPdf}
-                  sx={{ 
+                  sx={{
                     background: color.firstColor,
                     textTransform: "none",
                     px: 3,
@@ -441,8 +441,8 @@ const BookingDetails: React.FC = () => {
                 >
                   {generatingPdf ? "Generating PDF..." : "Download Invoice (PDF)"}
                 </Button>
-                <Button 
-                  variant="outlined" 
+                <Button
+                  variant="outlined"
                   onClick={() => window.print()}
                   sx={{ textTransform: "none" }}
                 >
@@ -461,7 +461,7 @@ const BookingDetails: React.FC = () => {
                 Invoice Summary
               </Typography>
               <Divider sx={{ mb: 2 }} />
-              
+
               <Box sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary">
                   Invoice Number
@@ -470,7 +470,7 @@ const BookingDetails: React.FC = () => {
                   {invoiceNumber}
                 </Typography>
               </Box>
-              
+
               <Box sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary">
                   Invoice Date
@@ -479,7 +479,7 @@ const BookingDetails: React.FC = () => {
                   {dated}
                 </Typography>
               </Box>
-              
+
               <Box sx={{ mb: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary">
                   Guest Name
@@ -488,7 +488,7 @@ const BookingDetails: React.FC = () => {
                   {UserName}
                 </Typography>
               </Box>
-              
+
               {hasGstDetails && (
                 <>
                   <Divider sx={{ my: 2 }} />
@@ -503,7 +503,7 @@ const BookingDetails: React.FC = () => {
                       {legalName}
                     </Typography>
                   </Box>
-                  
+
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="caption" color="text.secondary">
                       GSTIN
@@ -520,12 +520,12 @@ const BookingDetails: React.FC = () => {
 
         {/* Invoice Preview for PDF */}
         <Grid item xs={12}>
-          <Box 
-            ref={invoiceRef} 
-            sx={{ 
-              background: "#fff", 
-              p: { xs: 2, md: 4 }, 
-              color: "#000", 
+          <Box
+            ref={invoiceRef}
+            sx={{
+              background: "#fff",
+              p: { xs: 2, md: 4 },
+              color: "#000",
               border: "1px solid #e0e0e0",
               borderRadius: 1,
               maxWidth: "800px",
@@ -543,10 +543,10 @@ const BookingDetails: React.FC = () => {
                   src={logoUrl}
                   alt="HUTS4U logo"
                   crossOrigin="anonymous"
-                  style={{ 
-                    maxHeight: "60px", 
-                    objectFit: "contain", 
-                    marginBottom: "8px" 
+                  style={{
+                    maxHeight: "60px",
+                    objectFit: "contain",
+                    marginBottom: "8px"
                   }}
                 />
                 <Typography variant="h6" sx={{ fontWeight: 800, fontSize: "16px" }}>
@@ -581,7 +581,7 @@ const BookingDetails: React.FC = () => {
             {/* User GST Information Section - Only show basic user GST details */}
             {hasGstDetails && (
               <>
-                <UserGstInfoSection 
+                <UserGstInfoSection
                   gstDetails={gstDetails}
                   invoiceNumber={invoiceNumber}
                   dated={dated}
@@ -627,8 +627,8 @@ const BookingDetails: React.FC = () => {
 
             {/* Price Breakdown Table */}
             <Box sx={{ mb: 3 }}>
-              <table style={{ 
-                width: "100%", 
+              <table style={{
+                width: "100%",
                 borderCollapse: "collapse",
                 fontSize: "12px"
               }}>
@@ -644,13 +644,13 @@ const BookingDetails: React.FC = () => {
                   <tr>
                     <td style={{ border: "1px solid #ddd", padding: "8px" }}>1</td>
                     <td style={{ border: "1px solid #ddd", padding: "8px" }}>
-                      Base Price (Reimbursement) (HSN 9985)
+                      Base Price
                     </td>
                     <td style={{ border: "1px solid #ddd", padding: "8px", textAlign: "right" }}>
                       {formatCurrency(breakdown.baseTotal)}
                     </td>
                   </tr>
-                  
+
                   {/* Service Charges */}
                   <tr>
                     <td style={{ border: "1px solid #ddd", padding: "8px" }}>2</td>
@@ -661,7 +661,7 @@ const BookingDetails: React.FC = () => {
                       {formatCurrency(breakdown.serviceCharges)}
                     </td>
                   </tr>
-                  
+
                   {/* CGST on Service */}
                   <tr>
                     <td style={{ border: "1px solid #ddd", padding: "8px" }}></td>
@@ -672,7 +672,7 @@ const BookingDetails: React.FC = () => {
                       {formatCurrency(breakdown.serviceCGST)}
                     </td>
                   </tr>
-                  
+
                   {/* SGST on Service */}
                   <tr>
                     <td style={{ border: "1px solid #ddd", padding: "8px" }}></td>
@@ -683,18 +683,18 @@ const BookingDetails: React.FC = () => {
                       {formatCurrency(breakdown.serviceSGST)}
                     </td>
                   </tr>
-                  
+
                   {/* Convenience Fees */}
                   <tr>
                     <td style={{ border: "1px solid #ddd", padding: "8px" }}>3</td>
                     <td style={{ border: "1px solid #ddd", padding: "8px" }}>
-                      Convenience Fees (Incl. GST) (Reimbursement, HSN 9985)
+                      Convenience Fees (Incl. GST)
                     </td>
                     <td style={{ border: "1px solid #ddd", padding: "8px", textAlign: "right" }}>
                       {formatCurrency(breakdown.convenienceTotal)}
                     </td>
                   </tr>
-                  
+
                   {/* Subtotal */}
                   <tr>
                     <td colSpan={2} style={{ border: "1px solid #ddd", padding: "8px", textAlign: "right", fontWeight: 700 }}>
@@ -704,7 +704,7 @@ const BookingDetails: React.FC = () => {
                       {formatCurrency(breakdown.subtotalBeforeDiscount)}
                     </td>
                   </tr>
-                  
+
                   {/* Discount */}
                   <tr>
                     <td colSpan={2} style={{ border: "1px solid #ddd", padding: "8px", textAlign: "right", fontWeight: 700, color: "green" }}>
@@ -714,7 +714,7 @@ const BookingDetails: React.FC = () => {
                       -{formatCurrency(breakdown.discountAmount)}
                     </td>
                   </tr>
-                  
+
                   {/* Grand Total */}
                   <tr style={{ backgroundColor: "#f0f8ff" }}>
                     <td colSpan={2} style={{ border: "1px solid #ddd", padding: "10px", textAlign: "right", fontWeight: 800 }}>
@@ -733,14 +733,14 @@ const BookingDetails: React.FC = () => {
               <Typography sx={{ fontSize: "12px", fontWeight: 700, mb: 1 }}>
                 GST Summary:
               </Typography>
-              <Box sx={{ 
+              <Box sx={{
                 minWidth: '650px',
                 '@media (max-width: 600px)': {
                   minWidth: '650px'
                 }
               }}>
-                <table style={{ 
-                  width: "100%", 
+                <table style={{
+                  width: "100%",
                   borderCollapse: "collapse",
                   fontSize: "11px"
                 }}>
@@ -777,7 +777,7 @@ const BookingDetails: React.FC = () => {
                         {formatCurrency(breakdown.serviceCGST + breakdown.serviceSGST)}
                       </td>
                     </tr>
-                    
+
                     <tr style={{ backgroundColor: "#f0f8ff" }}>
                       <td style={{ border: "1px solid #ddd", padding: "6px", fontWeight: 700, whiteSpace: 'nowrap' }}>Total</td>
                       <td style={{ border: "1px solid #ddd", padding: "6px", textAlign: "right", fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -813,13 +813,13 @@ const BookingDetails: React.FC = () => {
             {/* Footer */}
             <Box sx={{ mt: 4, pt: 2, borderTop: "1px solid #ddd" }}>
               <Typography sx={{ fontSize: "10px", mb: 1 }}>
-                Declaration: We declare that this invoice shows the actual price of the goods described 
+                Declaration: We declare that this invoice shows the actual price of the goods described
                 and that all particulars are true and correct.
               </Typography>
               <Typography sx={{ fontSize: "10px", mb: 3 }}>
                 E. & O.E.
               </Typography>
-              
+
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
                 <Box>
                   <Typography sx={{ fontSize: "10px", color: "#666" }}>
@@ -838,11 +838,11 @@ const BookingDetails: React.FC = () => {
               </Box>
             </Box>
           </Box>
-          
+
           <Box sx={{ mt: 3, textAlign: "center" }}>
             <Typography variant="caption" color="text.secondary">
-              {hasGstDetails 
-                ? "GST Invoice Preview - Shows how the GST invoice will appear in the PDF" 
+              {hasGstDetails
+                ? "GST Invoice Preview - Shows how the GST invoice will appear in the PDF"
                 : "Regular Invoice Preview - Shows how the invoice will appear in the PDF"}
             </Typography>
           </Box>

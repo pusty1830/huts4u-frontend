@@ -56,7 +56,7 @@ import {
   StyledLabel,
 } from '../components/style';
 import { CDN_URL, MAPBOX_ACCESS_TOKEN } from '../services/Secret';
-import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories } from '../services/services';
+import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories, getHotelMeals } from '../services/services';
 
 /**
  * calculatePriceBreakdown (simplified - no discount)
@@ -334,6 +334,19 @@ const toCdn = (url?: string) => {
     minOvernightPrice: Infinity,
   });
 
+  useEffect(()=>{
+
+    const payLoad = {
+            data: { filter: "" },
+            page: 0,
+            pageSize: 1000,
+            order: [["createdAt", "ASC"]],
+          }
+      getHotelMeals(payLoad).then((res)=>{
+        console.log(res?.data?.data?.rows);
+        
+      })
+  },[])
   // Fetch inventory for each room for the specific dates
   const fetchInventoryForRooms = async () => {
     try {
