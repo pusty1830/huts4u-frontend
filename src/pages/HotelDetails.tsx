@@ -1718,65 +1718,70 @@ const HotelDetails: React.FC = () => {
             {/* Main container for MMT-like layout */}
             <Box sx={{
               display: 'flex',
-              flexDirection: { xs: 'column-reverse', lg: 'row' }, // Reverse on mobile to show booking summary first
+              flexDirection: { xs: 'column', lg: 'row' },
               gap: { xs: 2, lg: 3 },
-              mt: { xs: 1, lg: 2 }
+              mt: { xs: 0, lg: 2 }
             }}>
 
-              {/* LEFT SIDE - Rooms list (60% width) */}
+              {/* LEFT SIDE - Rooms list (60% width) - First on mobile */}
               <Box sx={{
                 flex: { xs: 1, lg: 0.6 },
-                overflow: 'visible',
-                order: { xs: 2, lg: 1 } // Show second on mobile, first on desktop
+                order: { xs: 1, lg: 1 },
+                width: '100%',
+                maxWidth: '100%',
+                overflowX: 'hidden'
               }}>
-                {/* Loading inventory indicator - Mobile optimized */}
+                {/* Loading inventory indicator */}
                 {loadingInventory && (
                   <Box sx={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 2,
-                    mb: { xs: 2, lg: 3 },
-                    p: { xs: 1.5, lg: 2 }
+                    mb: 2,
+                    p: 2,
+                    bgcolor: 'background.paper',
+                    borderRadius: 2,
+                    border: '1px solid #e0e0e0'
                   }}>
-                    <CircularProgress size={18} />
-                    <Typography variant="body2" color="textSecondary" fontSize={{ xs: '12px', lg: '14px' }}>
+                    <CircularProgress size={20} />
+                    <Typography variant="body2" color="textSecondary" fontSize={{ xs: '14px', lg: '14px' }}>
                       Checking room availability...
                     </Typography>
                   </Box>
                 )}
 
-                {/* MEAL PLAN FILTER - Mobile optimized */}
+                {/* MEAL PLAN FILTER */}
                 <Box sx={{
-                  mb: { xs: 2, lg: 3 },
-                  p: { xs: 1.5, lg: 2 },
+                  mb: 2,
+                  p: 2,
                   bgcolor: 'background.paper',
-                  borderRadius: { xs: 1, lg: 2 },
-                  boxShadow: { xs: '0 1px 2px rgba(0,0,0,0.08)', lg: '0 1px 4px rgba(0,0,0,0.1)' },
-                  border: '1px solid #e0e0e0'
+                  borderRadius: 2,
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                  border: '1px solid #e0e0e0',
+                  width: '95%',
+                  overflowX: 'hidden'
                 }}>
                   <Box sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: { xs: 1, lg: 2 },
-                    mb: { xs: 0.5, lg: 1 }
+                    gap: 1,
+                    mb: 1.5
                   }}>
                     <RestaurantMenu sx={{
                       color: color.firstColor,
-                      fontSize: { xs: 18, lg: 20 }
+                      fontSize: { xs: 20, lg: 20 }
                     }} />
-                    <Typography variant="subtitle1" fontWeight="bold" fontSize={{ xs: '14px', lg: '16px' }}>
+                    <Typography variant="subtitle1" fontWeight="bold" fontSize={{ xs: '15px', lg: '16px' }}>
                       Filter by Meal Plan
                     </Typography>
                   </Box>
 
-                  {/* Mobile: Scrollable chips, Desktop: Wrap */}
+                  {/* Meal plan chips */}
                   <Box sx={{
                     display: 'flex',
-                    flexWrap: { xs: 'nowrap', sm: 'wrap' },
-                    overflowX: { xs: 'auto', sm: 'visible' },
-                    gap: { xs: 0.5, lg: 1 },
-                    mt: { xs: 1, lg: 2 },
-                    pb: { xs: 0.5, lg: 0 }
+                    flexWrap: 'wrap',
+                    gap: 1,
+                    mt: 2
                   }}>
                     {['All Meal Plans', 'Room Only'].concat(
                       Array.from(new Set(
@@ -1787,7 +1792,6 @@ const HotelDetails: React.FC = () => {
                     ).map((plan) => {
                       const isSelected = mealPlanFilter === (plan === 'All Meal Plans' ? '' : plan);
 
-                      // Meal plan label mapping
                       const planLabels: Record<string, string> = {
                         'EP': 'Room + Breakfast',
                         'CP': 'Room + Breakfast + Lunch/Dinner',
@@ -1804,7 +1808,7 @@ const HotelDetails: React.FC = () => {
                           key={plan}
                           label={displayLabel}
                           clickable
-                          size={window.innerWidth < 600 ? "small" : "medium"}
+                          size="medium"
                           variant={isSelected ? "filled" : "outlined"}
                           onClick={() => setMealPlanFilter(plan === 'All Meal Plans' ? '' : plan)}
                           sx={{
@@ -1812,13 +1816,12 @@ const HotelDetails: React.FC = () => {
                             backgroundColor: isSelected ? color.firstColor : '#ffffff',
                             color: isSelected ? '#ffffff' : 'text.primary',
                             fontWeight: isSelected ? 600 : 400,
-                            fontSize: { xs: '11px', sm: '12px', lg: '13px' },
-                            height: { xs: 28, lg: 32 },
+                            fontSize: { xs: '12px', lg: '13px' },
+                            height: { xs: 32, lg: 32 },
                             '& .MuiChip-label': {
-                              px: { xs: 1, lg: 1.5 }
+                              px: 1.5
                             },
                             flexShrink: 0,
-                            whiteSpace: 'nowrap'
                           }}
                         />
                       );
@@ -1831,10 +1834,10 @@ const HotelDetails: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       flexWrap: 'wrap',
-                      gap: { xs: 0.5, lg: 1 },
-                      mt: { xs: 1, lg: 2 }
+                      gap: 1,
+                      mt: 2
                     }}>
-                      <Typography variant="body2" color="textSecondary" fontSize={{ xs: '11px', lg: '14px' }}>
+                      <Typography variant="body2" color="textSecondary" fontSize={{ xs: '13px', lg: '14px' }}>
                         Showing rooms with:
                       </Typography>
                       <Chip
@@ -1850,40 +1853,40 @@ const HotelDetails: React.FC = () => {
                             return planLabels[mealPlanFilter] || mealPlanFilter;
                           })()
                         }
-                        size="small"
+                        size="medium"
                         onDelete={() => setMealPlanFilter('')}
-                        deleteIcon={<Close sx={{ fontSize: { xs: 14, lg: 16 } }} />}
+                        deleteIcon={<Close sx={{ fontSize: { xs: 16, lg: 16 } }} />}
                         sx={{
                           fontWeight: 500,
                           backgroundColor: '#e3f2fd',
                           color: color.firstColor,
-                          fontSize: { xs: '11px', lg: '12px' },
-                          height: { xs: 24, lg: 28 }
+                          fontSize: { xs: '12px', lg: '13px' },
+                          height: { xs: 28, lg: 28 }
                         }}
                       />
-                      <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>
+                      <Typography variant="body2" color="textSecondary" fontSize={{ xs: '12px', lg: '12px' }}>
                         ({getFilteredRoomsCount()} rooms available)
                       </Typography>
                     </Box>
                   )}
                 </Box>
 
-                {/* Alert if all rooms are unavailable - Mobile optimized */}
+                {/* Alert if all rooms are unavailable */}
                 {getFilteredRooms().length === 0 && !loadingInventory && (
                   <Alert
                     severity="error"
                     sx={{
-                      mb: { xs: 2, lg: 3 },
-                      borderRadius: { xs: 1, lg: 2 },
+                      mb: 2,
+                      borderRadius: 2,
                       border: '1px solid #ffcdd2',
-                      p: { xs: 1, lg: 2 }
+                      p: 2
                     }}
-                    icon={<Block sx={{ fontSize: { xs: 18, lg: 20 } }} />}
+                    icon={<Block sx={{ fontSize: { xs: 20, lg: 20 } }} />}
                   >
-                    <AlertTitle sx={{ fontSize: { xs: '13px', lg: '16px' } }}>
+                    <AlertTitle sx={{ fontSize: { xs: '14px', lg: '16px' }, mb: 0.5 }}>
                       No Rooms Available
                     </AlertTitle>
-                    <Typography variant="body2" fontSize={{ xs: '11px', lg: '14px' }}>
+                    <Typography variant="body2" fontSize={{ xs: '13px', lg: '14px' }}>
                       {mealPlanFilter
                         ? `No rooms with "${mealPlanFilter}" meal plan are available for your selected dates.`
                         : 'All rooms in this hotel are currently unavailable for your selected dates. Please try different dates or explore other hotels.'
@@ -1892,30 +1895,30 @@ const HotelDetails: React.FC = () => {
                   </Alert>
                 )}
 
-                {/* Alert if some rooms are available - Mobile optimized */}
+                {/* Alert if some rooms are available */}
                 {unavailableRooms.length > 0 && getFilteredRooms().length > 0 && !loadingInventory && (
                   <Alert
                     severity="info"
                     sx={{
-                      mb: { xs: 2, lg: 3 },
-                      borderRadius: { xs: 1, lg: 2 },
+                      mb: 2,
+                      borderRadius: 2,
                       border: '1px solid #bbdefb',
-                      p: { xs: 1, lg: 2 }
+                      p: 2
                     }}
-                    icon={<Info sx={{ fontSize: { xs: 18, lg: 20 } }} />}
+                    icon={<Info sx={{ fontSize: { xs: 20, lg: 20 } }} />}
                   >
-                    <AlertTitle sx={{ fontSize: { xs: '13px', lg: '16px' } }}>
+                    <AlertTitle sx={{ fontSize: { xs: '14px', lg: '16px' }, mb: 0.5 }}>
                       Some Rooms Unavailable
                     </AlertTitle>
-                    <Typography variant="body2" fontSize={{ xs: '11px', lg: '14px' }}>
+                    <Typography variant="body2" fontSize={{ xs: '13px', lg: '14px' }}>
                       {unavailableRooms.length} room{unavailableRooms.length > 1 ? 's are' : ' is'} currently unavailable.
                       Showing {getFilteredRooms().length} available room{getFilteredRooms().length > 1 ? 's' : ''}.
                     </Typography>
                   </Alert>
                 )}
 
-                {/* Rooms Grid - Mobile optimized */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, lg: 2 } }}>
+                {/* Rooms Grid */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {getFilteredRooms().map((room: any) => {
                     const inventoryStatus = getRoomInventoryStatus(room);
                     const availableSlots = (bookingType || "").toLowerCase() === "hourly"
@@ -1931,21 +1934,20 @@ const HotelDetails: React.FC = () => {
                       <Card
                         key={`available-${room.id}`}
                         sx={{
-                          p: { xs: 1.5, lg: 2 },
+                          p: 2,
                           display: "flex",
                           flexDirection: "column",
-                          alignItems: "stretch",
                           background: '#ffffff',
-                          borderRadius: { xs: '8px', lg: '12px' },
-                          boxShadow: { xs: "0 1px 3px rgba(0,0,0,0.08)", lg: "0 2px 8px rgba(0,0,0,0.12)" },
+                          borderRadius: '12px',
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
                           border: "1px solid #e0e0e0",
                           position: "relative",
-                          overflow: "visible",
+                          overflow: "hidden",
                           cursor: hasAvailableSlots ? 'pointer' : 'default',
                           opacity: hasAvailableSlots ? 1 : 0.7,
                           transition: 'all 0.2s ease',
                           '&:hover': {
-                            boxShadow: hasAvailableSlots ? { xs: "0 2px 6px rgba(0,0,0,0.12)", lg: "0 4px 12px rgba(0,0,0,0.15)" } : "0 1px 3px rgba(0,0,0,0.08)",
+                            boxShadow: hasAvailableSlots ? "0 4px 12px rgba(0,0,0,0.15)" : "0 2px 8px rgba(0,0,0,0.1)",
                             borderColor: hasAvailableSlots ? color.firstColor : '#e0e0e0'
                           }
                         }}
@@ -1964,35 +1966,35 @@ const HotelDetails: React.FC = () => {
                           });
                         }}
                       >
-                        {/* Selected Room Checkmark - Mobile optimized */}
+                        {/* Selected Room Checkmark */}
                         {selectedRoom?.id === room.id && (
                           <CheckCircle
                             sx={{
                               position: "absolute",
-                              top: { xs: -6, lg: -10 },
-                              right: { xs: -6, lg: -10 },
+                              top: -1,
+                              right: -1,
                               color: '#4caf50',
                               background: '#ffffff',
                               borderRadius: "50%",
-                              fontSize: { xs: '22px', lg: '28px' },
+                              fontSize: '28px',
                               boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                               zIndex: 2
                             }}
                           />
                         )}
 
-                        {/* Inventory status badge - Mobile optimized */}
+                        {/* Inventory status badge */}
                         {inventoryStatus.icon && (
                           <Tooltip title={inventoryStatus.reason}>
                             <Box
                               sx={{
                                 position: "absolute",
-                                top: { xs: 6, lg: 10 },
-                                left: { xs: 6, lg: 10 },
+                                top: 10,
+                                left: 10,
                                 background: 'rgba(0, 0, 0, 0.7)',
                                 color: 'white',
                                 borderRadius: '4px',
-                                padding: { xs: '2px 6px', lg: '4px 8px' },
+                                padding: '4px 8px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '4px',
@@ -2000,9 +2002,9 @@ const HotelDetails: React.FC = () => {
                               }}
                             >
                               {React.cloneElement(inventoryStatus.icon, {
-                                sx: { fontSize: { xs: 12, lg: 14 } }
+                                sx: { fontSize: 12 }
                               })}
-                              <Typography variant="caption" fontWeight="bold" fontSize={{ xs: '9px', lg: '11px' }}>
+                              <Typography variant="caption" fontWeight="bold" fontSize='10px'>
                                 {inventoryStatus.status}
                               </Typography>
                             </Box>
@@ -2012,22 +2014,22 @@ const HotelDetails: React.FC = () => {
                         {/* Top row: Image and basic info */}
                         <Box sx={{
                           display: 'flex',
-                          flexDirection: { xs: 'column', sm: 'row' },
-                          gap: { xs: 1, sm: 1.5, lg: 2 },
-                          mb: { xs: 1.5, lg: 2 }
+                          flexDirection: { xs: 'column', md: 'row' },
+                          gap: 2,
+                          mb: 2
                         }}>
                           {/* Room Image */}
                           <Box sx={{
-                            width: { xs: '100%', sm: '150px', md: '200px', lg: '250px' },
+                            width: { xs: '100%', md: '200px' },
+                            height: { xs: '180px', md: '140px' },
                             flexShrink: 0
                           }}>
                             <CardMedia
                               component="img"
-
                               sx={{
-                                height: { xs: 120, sm: 140, lg: 160 },
-                                borderRadius: { xs: '6px', lg: '8px' },
-                                width: "100%",
+                                height: '100%',
+                                width: '100%',
+                                borderRadius: '8px',
                                 objectFit: 'cover'
                               }}
                               image={toCdn(room.roomImages)}
@@ -2042,9 +2044,9 @@ const HotelDetails: React.FC = () => {
                               fontWeight={700}
                               sx={{
                                 color: color.firstColor,
-                                fontSize: { xs: '14px', sm: '15px', lg: '16px' },
+                                fontSize: { xs: '16px', lg: '16px' },
                                 lineHeight: 1.3,
-                                mb: { xs: 0.5, lg: 1 }
+                                mb: 1
                               }}
                             >
                               {room.roomCategory}
@@ -2054,88 +2056,48 @@ const HotelDetails: React.FC = () => {
                             <Box sx={{
                               display: 'flex',
                               alignItems: 'center',
-                              gap: 0.5,
-                              mb: { xs: 0.5, lg: 1 }
+                              gap: 1,
+                              mb: 1
                             }}>
-                              <SquareFoot sx={{ fontSize: { xs: 12, lg: 14 }, color: '#666' }} />
-                              <Typography variant="body2" color="textSecondary" fontSize={{ xs: '11px', lg: '14px' }}>
+                              <SquareFoot sx={{ fontSize: 14, color: '#666' }} />
+                              <Typography variant="body2" color="textSecondary" fontSize='14px'>
                                 {room.roomSize} sq.ft
                               </Typography>
                             </Box>
 
-                            {/* Room Amenities - Compact on mobile */}
-                            <Box sx={{
-                              display: { xs: 'none', sm: 'block' },
-                              maxHeight: { sm: '60px', lg: 'none' },
-                              overflow: 'hidden'
-                            }}>
+                            {/* Room Amenities */}
+                            <Box>
                               <RoomAmenities key={room.id} room={room} />
                             </Box>
                           </Box>
                         </Box>
 
-                        {/* Mobile-only amenities */}
-                        <Box sx={{
-                          display: { xs: 'block', sm: 'none' },
-                          mb: 1
-                        }}>
-                          <RoomAmenities key={`mobile-${room.id}`} room={room} />
-                        </Box>
-
-                        {/* Room Details Toggle - Mobile optimized */}
+                        {/* Room Details Toggle */}
                         <Box sx={{
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          mb: { xs: 1, lg: 1.5 }
+                          mb: 1.5
                         }}>
                           <Button
                             sx={{
                               textTransform: "none",
-                              fontSize: { xs: '11px', lg: '12px' },
-                              p: 0,
+                              fontSize: '13px',
+                              p: 0.5,
                               minWidth: 0,
                               color: color.firstColor,
-                              fontWeight: 500
+                              fontWeight: 600
                             }}
                             onClick={(e) => {
                               e.stopPropagation();
                               setShowRoomDetails(!showRoomDetails);
                             }}
                             startIcon={showRoomDetails ?
-                              <ExpandLess sx={{ fontSize: { xs: 16, lg: 18 } }} /> :
-                              <ExpandMore sx={{ fontSize: { xs: 16, lg: 18 } }} />
+                              <ExpandLess sx={{ fontSize: 18 }} /> :
+                              <ExpandMore sx={{ fontSize: 18 }} />
                             }
                           >
                             {showRoomDetails ? "Show less" : "More details"}
-                          </Button>
-
-                          {/* View Deal Button - Mobile */}
-                          <Button
-                            variant="contained"
-                            size="small"
-                            sx={{
-                              display: { xs: 'inline-flex', sm: 'none' },
-                              backgroundColor: color.firstColor,
-                              color: '#fff',
-                              fontWeight: 600,
-                              borderRadius: '4px',
-                              px: 1.5,
-                              py: 0.5,
-                              minWidth: '80px',
-                              fontSize: '11px',
-                              '&:hover': {
-                                backgroundColor: color.secondColor
-                              }
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (hasAvailableSlots) {
-                                setSelectedRoom(room);
-                              }
-                            }}
-                          >
-                            View Deal
                           </Button>
                         </Box>
 
@@ -2143,41 +2105,41 @@ const HotelDetails: React.FC = () => {
                         {showRoomDetails && (
                           <Box sx={{
                             mt: 1,
-                            p: { xs: 1, lg: 1.5 },
+                            p: 2,
                             bgcolor: '#f9f9f9',
                             borderRadius: 1,
-                            mb: { xs: 1, lg: 1.5 }
+                            mb: 2
                           }}>
-                            <Grid container spacing={1}>
+                            <Grid container spacing={2}>
                               <Grid item xs={6}>
-                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" color="textSecondary" sx={{ display: 'block', fontSize: '12px', mb: 0.5 }}>
                                   Standard Occupancy:
                                 </Typography>
-                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: '13px' }}>
                                   {room.standardRoomOccupancy} guest(s)
                                 </Typography>
                               </Grid>
                               <Grid item xs={6}>
-                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" color="textSecondary" sx={{ display: 'block', fontSize: '12px', mb: 0.5 }}>
                                   Max Occupancy:
                                 </Typography>
-                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: '13px' }}>
                                   {room.maxRoomOccupancy} guest(s)
                                 </Typography>
                               </Grid>
                               <Grid item xs={6}>
-                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" color="textSecondary" sx={{ display: 'block', fontSize: '12px', mb: 0.5 }}>
                                   Additional Adult:
                                 </Typography>
-                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: '13px' }}>
                                   ₹{room.additionalGuestRate}
                                 </Typography>
                               </Grid>
                               <Grid item xs={6}>
-                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" color="textSecondary" sx={{ display: 'block', fontSize: '12px', mb: 0.5 }}>
                                   Additional Child:
                                 </Typography>
-                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                <Typography variant="body2" fontWeight={600} sx={{ fontSize: '13px' }}>
                                   ₹{room.additionalChildRate}
                                 </Typography>
                               </Grid>
@@ -2189,21 +2151,14 @@ const HotelDetails: React.FC = () => {
                         <Box sx={{
                           width: '100%',
                           borderTop: '1px solid #e0e0e0',
-                          pt: { xs: 1, lg: 1.5 }
+                          pt: 1.5
                         }}>
-                          {/* Price Slots - Mobile scrollable */}
+                          {/* Price Slots */}
                           <Box sx={{
                             display: "flex",
-                            gap: { xs: 0.5, lg: 1 },
-                            overflowX: { xs: 'auto', sm: 'visible' },
-                            pb: { xs: 0.5, lg: 0 },
-                            '&::-webkit-scrollbar': {
-                              height: '3px',
-                            },
-                            '&::-webkit-scrollbar-thumb': {
-                              backgroundColor: '#ccc',
-                              borderRadius: '1.5px',
-                            },
+                            flexWrap: 'wrap',
+                            gap: 1,
+                            mb: 1.5
                           }}>
                             {availableSlots
                               .filter(slotKey => {
@@ -2235,15 +2190,16 @@ const HotelDetails: React.FC = () => {
                                     }}
                                     disabled={!isSlotAvailable(room, slotKey)}
                                     sx={{
-                                      minWidth: { xs: '80px', sm: '90px', lg: '100px' },
-                                      py: { xs: 0.75, lg: 1 },
-                                      px: { xs: 0.5, lg: 1 },
+                                      flex: '1 1 calc(33.333% - 8px)',
+                                      minWidth: '100px',
+                                      maxWidth: '140px',
+                                      py: 1,
+                                      px: 1,
                                       display: 'flex',
                                       flexDirection: 'column',
                                       alignItems: 'center',
                                       borderColor: selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? color.firstColor : '#ddd',
                                       backgroundColor: selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? color.firstColor : 'transparent',
-                                      flexShrink: 0,
                                       '&:hover': {
                                         borderColor: color.firstColor,
                                         backgroundColor: selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? color.firstColor : 'rgba(33, 150, 243, 0.04)'
@@ -2254,7 +2210,8 @@ const HotelDetails: React.FC = () => {
                                       variant="caption"
                                       fontWeight={600}
                                       color={selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? '#fff' : '#666'}
-                                      fontSize={{ xs: '9px', lg: '11px' }}
+                                      fontSize='11px'
+                                      sx={{ mb: 0.5 }}
                                     >
                                       {slotLabel}
                                     </Typography>
@@ -2262,31 +2219,30 @@ const HotelDetails: React.FC = () => {
                                       variant="body1"
                                       fontWeight={700}
                                       color={selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? '#fff' : color.firstColor}
-                                      fontSize={{ xs: '12px', sm: '13px', lg: '14px' }}
+                                      fontSize='14px'
                                     >
                                       ₹{Math.round(perUnitMain)}
                                     </Typography>
                                     <Typography
                                       variant="caption"
                                       color={selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? '#fff' : '#666'}
-                                      fontSize={{ xs: '8px', lg: '10px' }}
+                                      fontSize='10px'
+                                      sx={{ mt: 0.5 }}
                                     >
-                                      +₹{Math.round(perUnitTaxes)} taxes
+                                      +₹{Math.round(perUnitTaxes)} taxes & fees
                                     </Typography>
                                   </Button>
                                 );
                               })}
                           </Box>
 
-                          {/* View Deal Button - Desktop */}
+                          {/* View Deal Button */}
                           <Box sx={{
-                            mt: { xs: 1, lg: 2 },
-                            textAlign: { xs: 'left', sm: 'right' },
-                            display: { xs: 'none', sm: 'block' }
+                            textAlign: 'right'
                           }}>
                             <Button
                               variant="contained"
-                              size="small"
+                              size="medium"
                               sx={{
                                 backgroundColor: color.firstColor,
                                 color: '#fff',
@@ -2295,7 +2251,7 @@ const HotelDetails: React.FC = () => {
                                 px: 2,
                                 py: 1,
                                 minWidth: '120px',
-                                fontSize: { sm: '12px', lg: '13px' },
+                                fontSize: '13px',
                                 '&:hover': {
                                   backgroundColor: color.secondColor
                                 }
@@ -2316,23 +2272,24 @@ const HotelDetails: React.FC = () => {
                   })}
                 </Box>
 
-                {/* Alternative Stays Button - Mobile optimized */}
+                {/* Alternative Stays Button */}
                 {hasAlternativeStays && !loadingSimilarHotels && !checkingAlternativeStays && (
                   <Box sx={{
                     mt: 3,
-                    p: { xs: 1.5, lg: 2 },
+                    p: 2,
                     bgcolor: '#fff',
-                    borderRadius: { xs: '8px', lg: '12px' },
+                    borderRadius: '12px',
                     border: '1px solid #e0e0e0',
-                    boxShadow: { xs: '0 1px 3px rgba(0,0,0,0.08)', lg: '0 2px 8px rgba(0,0,0,0.12)' }
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                   }}>
-                    <Typography variant="subtitle2" fontWeight={600} mb={1} fontSize={{ xs: '13px', lg: '14px' }}>
+                    <Typography variant="subtitle1" fontWeight={600} mb={1.5} fontSize={{ xs: '15px', lg: '16px' }}>
                       Looking for {bookingType === "hourly" ? "overnight" : "hourly"} stays?
                     </Typography>
                     <Button
                       variant="outlined"
                       fullWidth
-                      startIcon={<Search sx={{ fontSize: { xs: 16, lg: 18 } }} />}
+                      size="medium"
+                      startIcon={<Search sx={{ fontSize: { xs: 18, lg: 18 } }} />}
                       onClick={() => {
                         const searchParams = new URLSearchParams();
                         searchParams.set("location", "Bhubaneswar");
@@ -2360,8 +2317,9 @@ const HotelDetails: React.FC = () => {
                       sx={{
                         borderColor: color.firstColor,
                         color: color.firstColor,
-                        fontSize: { xs: '12px', lg: '14px' },
-                        py: { xs: 0.75, lg: 1 },
+                        fontSize: '14px',
+                        py: 1,
+                        borderRadius: '6px',
                         '&:hover': {
                           borderColor: color.secondColor,
                           backgroundColor: 'rgba(33, 150, 243, 0.04)'
@@ -2374,86 +2332,80 @@ const HotelDetails: React.FC = () => {
                 )}
               </Box>
 
-              {/* RIGHT SIDE - Booking Summary (40% width) - Mobile optimized */}
+              {/* RIGHT SIDE - Booking Summary (40% width) - Below on mobile */}
               <Box sx={{
                 flex: { xs: 1, lg: 0.4 },
-                position: { xs: 'sticky', lg: 'sticky' },
-                top: { xs: 0, lg: 20 },
-                bottom: { xs: 0, lg: 'auto' },
+                order: { xs: 2, lg: 2 },
+                width: '100%',
+                position: { xs: 'relative', lg: 'sticky' },
+                top: { xs: 'auto', lg: 20 },
                 alignSelf: { xs: 'stretch', lg: 'flex-start' },
-                height: { xs: '50vh', lg: 'calc(100vh - 100px)' }, // Changed from max-height to height
-                overflowY: 'auto',
-                zIndex: { xs: 1000, lg: 1 },
-                bgcolor: { xs: '#fff', lg: 'transparent' },
-                boxShadow: { xs: '0 -2px 10px rgba(0,0,0,0.1)', lg: 'none' },
+                height: { xs: 'auto', lg: 'calc(100vh - 100px)' },
+                maxHeight: { xs: 'none', lg: 'calc(100vh - 100px)' },
+                overflowY: { xs: 'visible', lg: 'auto' },
+                zIndex: { xs: 1, lg: 1000 },
+                bgcolor: '#fff',
+                boxShadow: { xs: '0 2px 8px rgba(0,0,0,0.1)', lg: 'none' },
                 borderTop: { xs: '1px solid #e0e0e0', lg: 'none' },
-                order: { xs: 1, lg: 2 },
-                '&::-webkit-scrollbar': { width: '4px' },
-                '&::-webkit-scrollbar-thumb': { backgroundColor: '#ccc', borderRadius: '2px' },
+                mt: { xs: 0, lg: 0 },
+                '&::-webkit-scrollbar': { display: 'none' }
               }}>
                 <Card sx={{
                   borderRadius: { xs: 0, lg: '12px' },
                   boxShadow: { xs: 'none', lg: '0 4px 12px rgba(0,0,0,0.1)' },
                   border: { xs: 'none', lg: '1px solid #e0e0e0' },
                   overflow: 'visible',
-                  minHeight: { xs: '100%', lg: '400px' }, // Changed to 100% for mobile
                   display: 'flex',
                   flexDirection: 'column'
                 }}>
-                  {/* Mobile header - Close button */}
-                  {isMobile && (
-                    <Box sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      p: 1.5,
-                      borderBottom: '1px solid #e0e0e0',
-                      bgcolor: '#f9f9f9',
-                      flexShrink: 0 // Prevent header from shrinking
-                    }}>
-                      <Typography variant="subtitle1" fontWeight={600}>
-                        Booking Summary
-                      </Typography>
-                      <IconButton size="small" onClick={() => {/* Add close handler */ }}>
-                        <Close />
-                      </IconButton>
-                    </Box>
-                  )}
+                  {/* Mobile header */}
+                  <Box sx={{
+                    display: { xs: 'flex', lg: 'none' },
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    p: 2,
+                    bgcolor: '#f9f9f9',
+                    borderBottom: '1px solid #e0e0e0'
+                  }}>
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      Booking Summary
+                    </Typography>
+                    <IconButton size="small" onClick={() => { }}>
+                      <Close />
+                    </IconButton>
+                  </Box>
 
                   {/* Scrollable content container */}
                   <Box sx={{
                     flex: 1,
-                    overflowY: 'auto',
+                    overflowY: { xs: 'visible', lg: 'auto' },
                     display: 'flex',
                     flexDirection: 'column',
-                    '&::-webkit-scrollbar': { width: '3px' },
-                    '&::-webkit-scrollbar-thumb': { backgroundColor: '#ddd', borderRadius: '1.5px' },
+                    '&::-webkit-scrollbar': { display: 'none' }
                   }}>
                     {/* Selected Room Header */}
                     <Box sx={{
                       background: `linear-gradient(135deg, ${color.firstColor}, ${color.secondColor})`,
-                      p: { xs: 1.5, lg: 2 },
-                      borderTopLeftRadius: { xs: 0, lg: '12px' },
-                      borderTopRightRadius: { xs: 0, lg: '12px' },
+                      p: { xs: 2, lg: 2 },
                       color: '#fff',
                       textAlign: 'center',
                       flexShrink: 0
                     }}>
-                      <Typography variant="h6" fontWeight={700} fontSize={{ xs: '15px', lg: '18px' }}>
+                      <Typography variant="h6" fontWeight={700} fontSize={{ xs: '16px', lg: '18px' }}>
                         {selectedRoom ? selectedRoom.roomCategory : 'Select a Room'}
                       </Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.9 }} fontSize={{ xs: '11px', lg: '12px' }}>
+                      <Typography variant="body2" sx={{ opacity: 0.9, mt: 0.5 }} fontSize={{ xs: '12px', lg: '12px' }}>
                         {selectedRoom ? `${selectedRoom.roomSize} sq.ft` : 'Choose from available rooms'}
                       </Typography>
                     </Box>
 
                     {/* Stay Details Section */}
                     <Box sx={{
-                      p: { xs: 1.5, lg: 2 },
+                      p: { xs: 2, lg: 2 },
                       flexShrink: 0
                     }}>
                       {/* Dates */}
-                      <Box sx={{ mb: { xs: 1.5, lg: 2 } }}>
+                      <Box sx={{ mb: { xs: 2, lg: 2 } }}>
                         <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={1} fontSize={{ xs: '12px', lg: '14px' }}>
                           Stay Dates
                         </Typography>
@@ -2462,47 +2414,47 @@ const HotelDetails: React.FC = () => {
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           bgcolor: '#f5f5f5',
-                          p: { xs: 1, lg: 1.5 },
+                          p: { xs: 1.5, lg: 1.5 },
                           borderRadius: '6px'
                         }}>
                           <Box sx={{ flex: 1 }}>
-                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>Check-in</Typography>
-                            <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '12px', lg: '14px' }}>
+                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '11px', lg: '12px' }}>Check-in</Typography>
+                            <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '13px', lg: '14px' }}>
                               {checkinDate ? dayjs(checkinDate).format("DD MMM") : "Select"}
                             </Typography>
                             {bookingType === "hourly" && checkinTime && (
-                              <Typography variant="caption" color="textSecondary" fontSize={{ xs: '9px', lg: '11px' }}>
+                              <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '11px' }}>
                                 {dayjs(checkinTime, "HH:mm").format("hh:mm A")}
                               </Typography>
                             )}
                           </Box>
                           <ArrowRightAlt sx={{ color: '#666', fontSize: { xs: 18, lg: 20 }, mx: { xs: 0.5, lg: 1 } }} />
                           <Box sx={{ flex: 1, textAlign: 'right' }}>
-                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>
+                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '11px', lg: '12px' }}>
                               {bookingType === "hourly" ? "Duration" : "Check-out"}
                             </Typography>
                             {bookingType === "hourly" ? (
-                              <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '12px', lg: '14px' }}>
+                              <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '13px', lg: '14px' }}>
                                 {selectedSlot.slot === "rateFor3Hour" ? "3H" :
                                   selectedSlot.slot === "rateFor6Hour" ? "6H" :
                                     selectedSlot.slot === "rateFor12Hour" ? "12H" : "Select"}
                               </Typography>
                             ) : (
-                              <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '12px', lg: '14px' }}>
+                              <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '13px', lg: '14px' }}>
                                 {checkOutDate ? dayjs(checkOutDate).format("DD MMM") : "Select"}
                               </Typography>
                             )}
                           </Box>
                         </Box>
                         {bookingType !== "hourly" && perStayMultiplier > 0 && (
-                          <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block', textAlign: 'center' }} fontSize={{ xs: '10px', lg: '12px' }}>
+                          <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block', textAlign: 'center' }} fontSize={{ xs: '11px', lg: '12px' }}>
                             {perStayMultiplier} night{perStayMultiplier > 1 ? 's' : ''} stay
                           </Typography>
                         )}
                       </Box>
 
                       {/* Room & Guests */}
-                      <Box sx={{ mb: { xs: 1.5, lg: 2 } }}>
+                      <Box sx={{ mb: { xs: 2, lg: 2 } }}>
                         <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={1} fontSize={{ xs: '12px', lg: '14px' }}>
                           Room & Guests
                         </Typography>
@@ -2511,14 +2463,14 @@ const HotelDetails: React.FC = () => {
                           justifyContent: 'space-between',
                           alignItems: 'center',
                           bgcolor: '#f5f5f5',
-                          p: { xs: 1, lg: 1.5 },
+                          p: { xs: 1.5, lg: 1.5 },
                           borderRadius: '6px'
                         }}>
                           <Box>
                             <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '13px', lg: '14px' }}>
                               {roomsCountParam} Room{roomsCountParam > 1 ? 's' : ''}
                             </Typography>
-                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '11px', lg: '12px' }}>
+                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '12px', lg: '12px' }}>
                               {adults} Adult{adults !== "1" ? 's' : ''}
                               {children !== "0" ? `, ${children} Child${children !== "1" ? 'ren' : ''}` : ''}
                             </Typography>
@@ -2530,8 +2482,9 @@ const HotelDetails: React.FC = () => {
                               sx={{
                                 bgcolor: color.firstColor,
                                 color: '#fff',
-                                fontSize: { xs: '10px', lg: '12px' },
-                                height: { xs: 24, lg: 28 }
+                                fontSize: { xs: '11px', lg: '12px' },
+                                height: { xs: 24, lg: 28 },
+                                fontWeight: 600
                               }}
                             />
                           )}
@@ -2539,13 +2492,12 @@ const HotelDetails: React.FC = () => {
                       </Box>
                     </Box>
 
-                    <Divider sx={{ mx: { xs: 1.5, lg: 2 } }} />
+                    <Divider sx={{ mx: { xs: 2, lg: 2 } }} />
 
-                    {/* Meal Plan Selection */}
                     {/* Meal Plan Selection */}
                     {selectedRoom && !loadingMealPlans && (
                       <Box sx={{
-                        p: { xs: 1.5, lg: 2 },
+                        p: { xs: 2, lg: 2 },
                         flexShrink: 0
                       }}>
                         <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={1} fontSize={{ xs: '12px', lg: '14px' }}>
@@ -2553,16 +2505,15 @@ const HotelDetails: React.FC = () => {
                         </Typography>
                         <Box sx={{
                           display: 'flex',
-                          gap: { xs: 0.75, lg: 1 },
+                          gap: { xs: 1, lg: 1 },
                           overflowX: 'auto',
                           pb: 1,
-                          '&::-webkit-scrollbar': { height: '3px' }
+                          '&::-webkit-scrollbar': { display: 'none' }
                         }}>
                           {getAvailableMealPlansForRoom(selectedRoom).map((plan: string) => {
                             const mealPrice = calculateMealPlanPrice(selectedRoom, plan);
                             const roomPrice = selectedSlot.slot ? getRoomPriceOnly(selectedRoom, selectedSlot.slot) : 0;
 
-                            // Calculate breakdowns separately
                             const roomOnlyTotal = roomPrice;
                             const roomBreakdown = calculatePriceBreakdown(roomOnlyTotal);
 
@@ -2571,7 +2522,6 @@ const HotelDetails: React.FC = () => {
                               mealBreakdown = calculatePriceBreakdown(mealPrice);
                             }
 
-                            // Calculate totals with multiplier
                             const totalRoomPrice = (roomBreakdown.basePrice + roomBreakdown.platformFee) * totalMultiplier;
                             const totalRoomTax = roomBreakdown.gstTotal * totalMultiplier;
 
@@ -2586,11 +2536,11 @@ const HotelDetails: React.FC = () => {
                             const totalTaxForPlan = totalRoomTax + totalMealTax;
 
                             return (
-                              <Card
+                              <Box
                                 key={plan}
                                 onClick={() => setSelectedMealPlan(plan)}
                                 sx={{
-                                  minWidth: { xs: 160, lg: 180 },
+                                  minWidth: { xs: 140, lg: 160 },
                                   border: `2px solid ${selectedMealPlan === plan ? color.firstColor : '#e0e0e0'}`,
                                   borderRadius: '6px',
                                   cursor: 'pointer',
@@ -2600,63 +2550,51 @@ const HotelDetails: React.FC = () => {
                                   '&:hover': { borderColor: color.firstColor }
                                 }}
                               >
-                                <Box sx={{ p: { xs: 1, lg: 1.5 } }}>
-                                  {/* Plan Name and Icon */}
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                                <Box sx={{ p: { xs: 1.5, lg: 1.5 } }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                                     {getMealPlanIcon(plan) || <RestaurantMenu sx={{ fontSize: { xs: 14, lg: 16 } }} />}
                                     <Typography variant="body2" fontWeight={600} fontSize={{ xs: '12px', lg: '13px' }}>
                                       {getMealPlanDescription(plan)}
                                     </Typography>
                                   </Box>
-                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '11px' }}>
+                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '11px', lg: '12px' }} sx={{ mb: 0.5, display: 'block' }}>
                                     {plan === 'Room Only' ? 'No meals' : 'Includes meals'}
                                   </Typography>
-
-                                  {/* Price Display */}
-                                  <Typography variant="body1" fontWeight={700} color={color.firstColor} fontSize={{ xs: '13px', lg: '15px' }}>
+                                  <Typography variant="body1" fontWeight={700} color={color.firstColor} fontSize={{ xs: '14px', lg: '15px' }}>
                                     ₹{Math.round(totalForPlan)}
                                   </Typography>
-
-                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '8px', lg: '9px' }} sx={{ display: 'block' }}>
+                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '11px' }} sx={{ display: 'block' }}>
                                     + ₹{Math.round(totalTaxForPlan)} taxes & fees
                                   </Typography>
-
-
-                                  {/* Total with taxes */}
-
                                 </Box>
-                              </Card>
+                              </Box>
                             );
                           })}
                         </Box>
                       </Box>
                     )}
 
-                    <Divider sx={{ mx: { xs: 1.5, lg: 2 } }} />
+                    <Divider sx={{ mx: { xs: 2, lg: 2 } }} />
 
                     {/* Price Breakdown */}
                     <Box sx={{
-                      p: { xs: 1.5, lg: 2 },
+                      p: { xs: 2, lg: 2 },
                       flexShrink: 0
                     }}>
-                      <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={2} fontSize={{ xs: '12px', lg: '14px' }}>
+                      <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={1.5} fontSize={{ xs: '12px', lg: '14px' }}>
                         Price Summary
                       </Typography>
 
-                      {/* Calculate breakdowns exactly like meal plan cards */}
                       {(() => {
-                        // Get the room price and calculate breakdown
                         const roomPrice = selectedSlot.slot ? getRoomPriceOnly(selectedRoom, selectedSlot.slot) : 0;
                         const roomBreakdown = calculatePriceBreakdown(roomPrice);
 
-                        // Calculate meal breakdown if meal plan is selected
                         let mealBreakdown = null;
                         if (selectedMealPlan !== 'Room Only') {
                           const mealPrice = calculateMealPlanPrice(selectedRoom, selectedMealPlan);
                           mealBreakdown = calculatePriceBreakdown(mealPrice);
                         }
 
-                        // Calculate totals with multiplier - SAME LOGIC as meal plan cards
                         const totalRoomPrice = (roomBreakdown.basePrice + roomBreakdown.platformFee) * totalMultiplier;
                         const totalRoomTax = roomBreakdown.gstTotal * totalMultiplier;
 
@@ -2667,54 +2605,46 @@ const HotelDetails: React.FC = () => {
                           totalMealTax = mealBreakdown.gstTotal * totalMultiplier;
                         }
 
-                        // Calculate the base price (without taxes)
                         const totalBasePrice = totalRoomPrice + totalMealPrice;
-
-                        // Calculate the total tax - SAME as meal plan cards
                         const totalTax = totalRoomTax + totalMealTax;
 
                         return (
                           <>
-                            {/* Total Amount - Same format as meal plan cards */}
                             <Box sx={{
                               bgcolor: '#f9f9f9',
-                              p: { xs: 1.5, lg: 2 },
+                              p: { xs: 1.5, lg: 1.5 },
                               borderRadius: '6px',
                               border: '1px solid #e0e0e0',
                               mb: 2
                             }}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Box>
-                                  <Typography variant="h6" fontWeight={700} fontSize={{ xs: '14px', lg: '16px' }}>
+                                  <Typography variant="body1" fontWeight={700} fontSize={{ xs: '14px', lg: '16px' }}>
                                     Total Amount
                                   </Typography>
                                 </Box>
                                 <Box sx={{ textAlign: 'right' }}>
-                                  {/* Show base price (without taxes) - Just like meal plan cards */}
-                                  <Typography variant="h5" fontWeight={800} color={color.firstColor} fontSize={{ xs: '16px', lg: '20px' }}>
+                                  <Typography variant="h6" fontWeight={800} color={color.firstColor} fontSize={{ xs: '18px', lg: '20px' }}>
                                     ₹{Math.round(totalBasePrice)}
                                   </Typography>
-
-                                  {/* Show taxes & fees separately - USING SAME CALCULATION as meal plan cards */}
-                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>
+                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '11px', lg: '12px' }}>
                                     + ₹{Math.round(totalTax)} taxes & fees
                                   </Typography>
                                 </Box>
                               </Box>
                             </Box>
 
-                            {/* Savings Info */}
                             {displayBasePlus700 > displayCombinedBasePlatform && (
                               <Alert
                                 severity="success"
                                 sx={{
                                   mb: 2,
                                   borderRadius: '6px',
-                                  py: { xs: 0.5, lg: 1 },
-                                  '& .MuiAlert-icon': { fontSize: { xs: 16, lg: 20 } }
+                                  py: { xs: 1, lg: 1 },
+                                  '& .MuiAlert-icon': { fontSize: { xs: 16, lg: 18 } }
                                 }}
                               >
-                                <Typography variant="caption" fontWeight={600} fontSize={{ xs: '11px', lg: '12px' }}>
+                                <Typography variant="body2" fontWeight={600} fontSize={{ xs: '12px', lg: '13px' }}>
                                   You save ₹{Math.round(displayBasePlus700 - displayCombinedBasePlatform)}!
                                 </Typography>
                               </Alert>
@@ -2725,16 +2655,12 @@ const HotelDetails: React.FC = () => {
                     </Box>
                   </Box>
 
-                  {/* Book Now Button - Fixed at bottom */}
+                  {/* Book Now Button */}
                   <Box sx={{
-                    p: { xs: 1.5, lg: 2 },
-                    pt: 0,
+                    p: { xs: 2, lg: 2 },
                     bgcolor: '#fff',
-                    borderTop: { xs: '1px solid #e0e0e0', lg: 'none' },
-                    flexShrink: 0,
-                    position: 'sticky',
-                    bottom: 0,
-                    zIndex: 10
+                    borderTop: '1px solid #e0e0e0',
+                    flexShrink: 0
                   }}>
                     <Button
                       variant="contained"
@@ -2743,7 +2669,7 @@ const HotelDetails: React.FC = () => {
                       onClick={handleBookNow}
                       disabled={availableRooms.length === 0}
                       sx={{
-                        height: { xs: '48px', lg: '56px' },
+                        height: { xs: '48px', lg: '48px' },
                         fontSize: { xs: '15px', lg: '16px' },
                         fontWeight: 700,
                         background: `linear-gradient(135deg, ${color.firstColor}, ${color.secondColor})`,
@@ -2761,8 +2687,6 @@ const HotelDetails: React.FC = () => {
                     >
                       {availableRooms.length === 0 ? 'No Rooms Available' : 'Book Now'}
                     </Button>
-
-
                   </Box>
                 </Card>
               </Box>
