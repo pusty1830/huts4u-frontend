@@ -1,14 +1,10 @@
-
-import React, { Suspense, lazy } from "react";
-
-
+import React from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
-
 import color from "../../components/color";
 import { useScreenSize } from "../../components/style";
 import { bgHero, konarkHero } from "../../Image/Image";
-const SearchSection = lazy(() => import("./SearchSection"));
+import SearchSection from "./SearchSection";
 
 const HeroSection: React.FC = () => {
   const { isBelow400px } = useScreenSize();
@@ -16,8 +12,8 @@ const HeroSection: React.FC = () => {
   return (
     <Box
       sx={{
-        height: "calc(100vh - 64px)",
-        maxHeight: { xs: "100vh", md: "700px" },
+        height: { xs: "calc(100vh - 64px)", sm: "calc(100vh - 70px)", md: "calc(100vh - 80px)" },
+        maxHeight: { xs: "100vh", sm: "600px", md: "700px" },
         background: `url('${bgHero}')`,
         backgroundSize: "cover",
         backgroundPosition: "center",
@@ -25,6 +21,7 @@ const HeroSection: React.FC = () => {
         display: "flex",
       }}
     >
+      {/* Overlay */}
       <Box
         sx={{
           width: "100%",
@@ -34,14 +31,15 @@ const HeroSection: React.FC = () => {
           top: 0,
           left: 0,
           zIndex: 1,
-          opacity: { xs: 0, md: 0.84 },
+          opacity: { xs: 0.3, sm: 0.4, md: 0.84 },
         }}
       ></Box>
 
-      <div
-        style={{
+      {/* Left Content Section */}
+      <Box
+        sx={{
           flex: 1,
-          minWidth: "50vw",
+          minWidth: { xs: "100vw", sm: "60vw", md: "50vw" },
           color: color.firstColor,
           zIndex: 2,
           position: "relative",
@@ -50,19 +48,20 @@ const HeroSection: React.FC = () => {
         <Box
           sx={{
             position: "absolute",
-            top: isBelow400px ? "5%" : { xs: "10%", md: "14%" },
-            left: "10%",
+            top: isBelow400px ? "5%" : { xs: "8%", sm: "10%", md: "14%" },
+            left: { xs: "5%", sm: "8%", md: "10%" },
+            right: { xs: "5%", sm: "auto" },
           }}
         >
           <Typography
             sx={{
               background: color.firstColor,
               color: color.thirdColor,
-              p: 1,
-              py: 0.5,
+              p: { xs: 0.75, sm: 1 },
+              py: { xs: 0.25, sm: 0.5 },
               width: "fit-content",
-              mb: 2,
-              fontSize: isBelow400px ? "14px" : { xs: "16px", md: "24px" },
+              mb: { xs: 1.5, sm: 2 },
+              fontSize: isBelow400px ? "12px" : { xs: "14px", sm: "18px", md: "24px" },
               borderRadius: "4px",
             }}
           >
@@ -71,18 +70,19 @@ const HeroSection: React.FC = () => {
           <Typography
             sx={{
               lineHeight: 1.2,
-              fontSize: isBelow400px ? "24px" : { xs: "32px", md: "48px" },
+              fontSize: isBelow400px ? "20px" : { xs: "24px", sm: "32px", md: "48px" },
               fontFamily: "CustomFontB",
             }}
           >
             Stay a while feel <br /> alive
           </Typography>
         </Box>
-      </div>
+      </Box>
 
+      {/* Right Image Section */}
       <Box
         sx={{
-          display: { xs: "none", md: "block" },
+          display: { xs: "none", sm: "block" },
           flex: 1,
           height: "100%",
           background: `url('${konarkHero}')`,
@@ -94,31 +94,19 @@ const HeroSection: React.FC = () => {
         }}
       ></Box>
 
-     <Box
-  sx={{
-    width: { xs: "90%", md: "80%" },
-    position: "absolute",
-    bottom: isBelow400px ? "4%" : "12%",
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 3,
-  }}
->
-  <Suspense
-    fallback={
+      {/* Search Section */}
       <Box
         sx={{
-          height: 120,
-          background: "rgba(255,255,255,0.6)",
-          borderRadius: "12px",
+          width: { xs: "95%", sm: "90%", md: "80%" },
+          position: "absolute",
+          bottom: isBelow400px ? "4%" : { xs: "6%", sm: "8%", md: "12%" },
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 3,
         }}
-      />
-    }
-  >
-    <SearchSection />
-  </Suspense>
-</Box>
-
+      >
+        <SearchSection />
+      </Box>
     </Box>
   );
 };

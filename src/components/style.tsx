@@ -217,7 +217,10 @@ export const LoginTextField = styled(TextField)({
 export const useScreenSize = () => {
   const theme = useTheme();
   const isBelow400px = useMediaQuery(theme.breakpoints.down(400));
-  return { isBelow400px };
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')); // < 600px
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md')); // 600px - 900px
+
+  return { isBelow400px ,isMobile, isTablet };
 };
 
 export const inputSx = {

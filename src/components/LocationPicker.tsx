@@ -14,6 +14,8 @@ import {
   DialogActions,
   Button,
   ListItemIcon,
+  IconButton,
+  InputAdornment,
 } from "@mui/material";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { getCurrentLocation } from "../GeoLocations";
@@ -27,6 +29,7 @@ import {
   Business,
   Home,
   Villa,
+  Close,
 } from "@mui/icons-material";
 
 const GOOGLE_MAPS_API_KEY = GOOGLE_MAPS_API_KEY1;
@@ -76,7 +79,9 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
   value,
   setValue,
 }) => {
-  const [input, setInput] = useState<string>(value || "");
+  // Track if it's initial load
+  const initialLoadRef = useRef(true);
+  const [input, setInput] = useState<string>("");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [hotelSuggestions, setHotelSuggestions] = useState<HotelType[]>([]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -127,6 +132,30 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
     
     fetchHotels();
   }, []);
+
+  // Set default "Bhubaneswar" on initial load only
+  useEffect(() => {
+    if (initialLoadRef.current) {
+      // Only set Bhubaneswar if no value is provided from parent
+      if (!value) {
+        setInput("Bhubaneswar");
+        setValue("Bhubaneswar");
+        
+        // Set default Bhubaneswar location
+        onSelect({
+          display_name: "Bhubaneswar",
+          lat: 20.2961,
+          lon: 85.8245,
+          place_id: null,
+          name: "Bhubaneswar",
+          type: 'location',
+        });
+      } else {
+        setInput(value);
+      }
+      initialLoadRef.current = false;
+    }
+  }, [value, setValue, onSelect]);
 
   // Function to dynamically load Google Maps script
   const loadGoogleMapsScript = useCallback((callback: () => void) => {
@@ -249,7 +278,26 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
           );
           const data = await response.json();
           if (data.features && data.features.length > 0) {
-            const currentLocation = data.features[0].place_name;
+            // Extract just the locality/area name without city
+            let currentLocation = data.features[0].place_name;
+            
+            // Try to get a more specific name (just the locality)
+            const feature = data.features[0];
+            if (feature.text) {
+              // Use the primary text (usually the most specific name)
+              currentLocation = feature.text;
+              
+              // If there's context, check if it's a locality
+              if (feature.context) {
+                const localityContext = feature.context.find((ctx: any) => 
+                  ctx.id.includes('locality') || ctx.id.includes('place')
+                );
+                if (localityContext) {
+                  currentLocation = localityContext.text;
+                }
+              }
+            }
+            
             setInput(currentLocation);
             setValue(currentLocation);
             
@@ -322,13 +370,6 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
     setLocationPermission(false);
   };
 
-  // Fetch current location on component mount if no value is set
-  useEffect(() => {
-    if (!value) {
-      fetchCurrentLocation();
-    }
-  }, [value]);
-
   // Initialize Google Places Service once script is loaded
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) return;
@@ -355,11 +396,6 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
       placesServiceRef.current = null;
     };
   }, [loadGoogleMapsScript]);
-
-  // Sync input with external value changes
-  useEffect(() => {
-    setInput(value || "");
-  }, [value]);
 
   // Search hotels by name (property name only)
   const searchHotels = (query: string): HotelType[] => {
@@ -391,13 +427,20 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
 
       placesServiceRef.current?.textSearch(request, (results, status) => {
         if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-          const formattedResults = results.map((place: any) => ({
-            place_id: place.place_id,
-            formatted_address: place.formatted_address,
-            name: place.name,
-            geometry: place.geometry,
-            types: place.types || [],
-          }));
+          const formattedResults = results.map((place: any) => {
+            // Clean the address to remove "Bhubaneswar" suffix
+            let cleanAddress = place.formatted_address || "";
+            // Remove ", Bhubaneswar" and variations from the end
+            cleanAddress = cleanAddress.replace(/,\s*Bhubaneswar.*$/i, '').trim();
+            
+            return {
+              place_id: place.place_id,
+              formatted_address: cleanAddress || place.name,
+              name: place.name,
+              geometry: place.geometry,
+              types: place.types || [],
+            };
+          });
           resolve(formattedResults);
         } else {
           console.log('Google Places search status:', status);
@@ -414,7 +457,7 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
     setAnchorEl(event.currentTarget);
 
     if (!newValue.trim()) {
-      setValue(null);
+      setValue("");
       setSuggestions([]);
       setHotelSuggestions([]);
     } else if (newValue.length > 1) {
@@ -458,17 +501,24 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
         )}.json?access_token=${mapboxToken}&autocomplete=true&bbox=${bbox}&limit=10&proximity=85.8245,20.2961`
       );
       const data = await response.json();
-      const formattedData = data.features?.map((feature: any) => ({
-        place_id: feature.id,
-        formatted_address: feature.place_name,
-        name: feature.text,
-        geometry: {
-          location: {
-            lat: () => feature.center[1],
-            lng: () => feature.center[0],
+      const formattedData = data.features?.map((feature: any) => {
+        // Clean the place name to remove "Bhubaneswar" suffix
+        let cleanPlaceName = feature.place_name || "";
+        // Remove ", Bhubaneswar" and variations from the end
+        cleanPlaceName = cleanPlaceName.replace(/,\s*Bhubaneswar.*$/i, '').trim();
+        
+        return {
+          place_id: feature.id,
+          formatted_address: cleanPlaceName || feature.text,
+          name: feature.text,
+          geometry: {
+            location: {
+              lat: () => feature.center[1],
+              lng: () => feature.center[0],
+            }
           }
-        }
-      })) || [];
+        };
+      }) || [];
       setSuggestions(formattedData);
     } catch (error) {
       console.error("Error fetching Mapbox suggestions:", error);
@@ -515,6 +565,32 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
 
   const handleManualLocationClick = () => {
     fetchCurrentLocation();
+  };
+
+  // Clear all text - EMPTY the field, don't set to Bhubaneswar
+  const handleClearText = () => {
+    setInput("");
+    setValue("");
+    setSuggestions([]);
+    setHotelSuggestions([]);
+    
+    // Don't reset to Bhubaneswar, let field be empty
+    // User can type or select something new
+  };
+
+  // Function to reset to Bhubaneswar (if needed elsewhere)
+  const resetToBhubaneswar = () => {
+    setInput("Bhubaneswar");
+    setValue("Bhubaneswar");
+    
+    onSelect({
+      display_name: "Bhubaneswar",
+      lat: 20.2961,
+      lon: 85.8245,
+      place_id: null,
+      name: "Bhubaneswar",
+      type: 'location',
+    });
   };
 
   // Get icon based on property type or place type
@@ -631,12 +707,29 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
             color: color.firstColor,
             borderRadius: 2,
             minWidth: { xs: "250px", md: "300px" },
+            position: "relative",
           }}
         >
           <TextField
             variant="standard"
             InputProps={{ 
               disableUnderline: true,
+              endAdornment: input && input.trim() !== "" && (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={handleClearText}
+                    size="small"
+                    sx={{
+                      color: color.firstColor,
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                      },
+                    }}
+                  >
+                    <Close fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
               // Add this to disable native autocomplete
               inputProps: {
                 autoComplete: "off",
@@ -670,6 +763,7 @@ const LocationPicker: React.FC<AutocompleteProps> = ({
                 fontFamily: "CustomFontB",
                 fontSize: { xs: "18px", md: "20px" },
                 width: "100%",
+                paddingRight: "40px", // Make room for clear button
                 // Disable native autocomplete
                 "&:-webkit-autofill": {
                   WebkitBoxShadow: "0 0 0 100px white inset",

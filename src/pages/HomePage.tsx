@@ -1,4 +1,4 @@
-import React,{lazy,Suspense} from "react";
+import React, { lazy, Suspense } from "react";
 
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
@@ -16,57 +16,57 @@ import TestimonialsCarousel from "./Home Section/TestimonialsCarousel";
 
 
 const LazyHotelCardCarousel = lazy(() => import("./Home Section/HotelCardCarousel"));
-const LazyBlogPage=lazy(()=>import("./BlogPage"))
+const LazyBlogPage = lazy(() => import("./BlogPage"))
 
 
 
 const HomePage = () => {
-  
+
 
   return (
-    <Box sx={{overflowY:"hidden"}}>
+    <Box sx={{ overflowY: "hidden" }}>
       <Helmet>
-  <title>Hourly Hotel Stays in Bhubaneswar | Huts4U</title>
+        <title>Huts4U: Hourly & Full Day Hotel Stays in Bhubaneswar</title>
 
-  <meta
-    name="description"
-    content="Book hourly and overnight hotel stays in Bhubaneswar with Huts4U. Clean rooms, flexible check-ins, and best prices."
-  />
+        <meta
+          name="description"
+          content="Book hourly and overnight hotel stays in Bhubaneswar with Huts4U. Clean rooms, flexible check-ins, and best prices."
+        />
 
-  <link rel="canonical" href="https://huts4u.com/" />
+        <link rel="canonical" href="https://huts4u.com/" />
 
-  {/* Website Schema – REQUIRED for sitelinks */}
-  <script type="application/ld+json">
-    {JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "@id": "https://huts4u.com/#website",
-      "url": "https://huts4u.com",
-      "name": "Huts4U",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://huts4u.com/search?location={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    })}
-  </script>
+        {/* Website Schema – REQUIRED for sitelinks */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "@id": "https://huts4u.com/#website",
+            "url": "https://huts4u.com",
+            "name": "Huts4U",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://huts4u.com/search?location={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          })}
+        </script>
 
-  {/* Organization Schema – fixes logo & brand */}
-  <script type="application/ld+json">
-    {JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "@id": "https://huts4u.com/#organization",
-      "name": "Huts4U",
-      "url": "https://huts4u.com",
-      "logo": "https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png",
-      "sameAs": [
-        "https://www.instagram.com/huts4u",
-        "https://www.facebook.com/huts4u"
-      ]
-    })}
-  </script>
-</Helmet>
+        {/* Organization Schema – fixes logo & brand */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "@id": "https://huts4u.com/#organization",
+            "name": "Huts4U",
+            "url": "https://huts4u.com",
+            "logo": "https://huts44u.s3.ap-south-1.amazonaws.com/hutlogo-removebg-preview.png",
+            "sameAs": [
+              "https://www.instagram.com/huts4u",
+              "https://www.facebook.com/huts4u"
+            ]
+          })}
+        </script>
+      </Helmet>
 
 
       <HeroSection></HeroSection>
@@ -94,10 +94,10 @@ const HomePage = () => {
         <TestimonialsCarousel></TestimonialsCarousel>
 
 
-      <Suspense fallback={<div>Loading Blog...</div>}>
+        <Suspense fallback={<div>Loading Blog...</div>}>
           <LazyBlogPage />
         </Suspense>
-        
+
 
         <SectionHeader
           primaryText={"Frequently Asked Questions"}

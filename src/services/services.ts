@@ -320,3 +320,8 @@ export function  getHourlyClosures(payLoad:any){
     return client.post(`/HotelHourly/search-record/`,payLoad)
 }
 
+export function  getHotelDiscount(payLoad:any){
+    return client.post(`/HotelDiscount/search-record/`,payLoad)
+}
+
+

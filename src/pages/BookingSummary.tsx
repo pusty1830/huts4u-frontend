@@ -36,6 +36,10 @@ import {
   Business as BusinessIcon,
   Delete as DeleteIcon,
   ContentCopy as CopyIcon,
+  Restaurant as RestaurantIcon,
+  Discount as DiscountIcon,
+  Percent as PercentIcon,
+  AttachMoney as MoneyIcon,
 } from "@mui/icons-material";
 import dayjs from "dayjs";
 import { useFormik } from "formik";
@@ -49,7 +53,7 @@ import RenderRazorpay from "../components/Payments/RanderPayments";
 import color from "../components/color";
 import { BoxStyle, CustomTextField } from "../components/style";
 import { getUserId, isLoggedIn } from "../services/axiosClient";
-import { createOrder, getProfile, sendOTP, updateGST } from "../services/services";
+import { createOrder, getHotelDiscount, getProfile, sendOTP, updateGST } from "../services/services";
 import LoginOtpModal from "./Account/LoginOtpModal";
 import InfoIcon from "@mui/icons-material/Info";
 import "react-phone-input-2/lib/style.css";
@@ -70,32 +74,45 @@ const validationSchema = Yup.object({
     }),
 });
 
-// ---------------- SIMPLE PRICE CALCULATION ----------------
+// ---------------- UPDATED PRICE CALCULATION WITH MEAL PLAN & DISCOUNTS ----------------
 export const calculatePriceBreakdown = (
   basePrice: number,
-  couponApplied = true
+  mealPlanPrice: number = 0,
+  discounts: {
+    hotelDiscountValue: number;
+    hotelDiscountType: 'percentage' | 'flat' | null;
+    couponApplied: boolean;
+    couponValue: number;
+  }
 ) => {
   const numericBase = Number(basePrice) || 0;
+  const numericMeal = Number(mealPlanPrice) || 0;
 
   if (!numericBase || numericBase <= 0) {
     return {
       basePrice: 0,
+      mealPlanPrice: 0,
       gstOnBase: 0,
       platformFee: 0,
       gstOnPlatform: 0,
       convenienceFee: 0,
       gstOnConvenience: 0,
       totalWithoutDiscount: 0,
+      hotelDiscount: 0,
       couponDiscount: 0,
+      totalDiscount: 0,
       finalPrice: 0,
     };
   }
 
-  // 1. GST on base (5%)
-  const gstOnBase = numericBase * 0.05;
+  // Total taxable value (base + meal plan)
+  const totalTaxableValue = numericBase + numericMeal;
+
+  // 1. GST on base + meal (5%)
+  const gstOnBase = totalTaxableValue * 0.05;
 
   // Amount after base GST
-  const amountAfterBaseGst = numericBase + gstOnBase;
+  const amountAfterBaseGst = totalTaxableValue + gstOnBase;
 
   // 2. Platform fee (13% on base + GST)
   const platformFee = amountAfterBaseGst * 0.13;
@@ -105,7 +122,7 @@ export const calculatePriceBreakdown = (
 
   // 4. Subtotal before convenience
   const subtotalBeforeConvenience =
-    numericBase + gstOnBase + platformFee + gstOnPlatform;
+    totalTaxableValue + gstOnBase + platformFee + gstOnPlatform;
 
   // 5. Convenience fee (2% on subtotal)
   const convenienceFee = subtotalBeforeConvenience * 0.02;
@@ -117,24 +134,42 @@ export const calculatePriceBreakdown = (
   const totalWithoutDiscount =
     subtotalBeforeConvenience + convenienceFee + gstOnConvenience;
 
-  // 8. Coupon discount (5% on total without discount) - ONLY if coupon is applied
-  let couponDiscount = 0;
-  if (couponApplied) {
-    couponDiscount = totalWithoutDiscount * 0.05;
+  // Calculate hotel discount
+  let hotelDiscount = 0;
+  if (discounts.hotelDiscountValue > 0 && discounts.hotelDiscountType) {
+    if (discounts.hotelDiscountType === 'percentage') {
+      // Percentage discount on total without discount
+      hotelDiscount = totalWithoutDiscount * (discounts.hotelDiscountValue / 100);
+    } else {
+      // Flat discount
+      hotelDiscount = Math.min(discounts.hotelDiscountValue, totalWithoutDiscount);
+    }
   }
 
-  // 9. Final price = total without discount - discount
-  const finalPrice = totalWithoutDiscount - couponDiscount;
+  // Calculate coupon discount (5% on total without discount)
+  let couponDiscount = 0;
+  if (discounts.couponApplied) {
+    couponDiscount = totalWithoutDiscount * discounts.couponValue;
+  }
+
+  // Total discount
+  const totalDiscount = hotelDiscount + couponDiscount;
+
+  // Final price = total without discount - discounts
+  const finalPrice = totalWithoutDiscount - totalDiscount;
 
   return {
     basePrice: numericBase,
+    mealPlanPrice: numericMeal,
     gstOnBase,
     platformFee,
     gstOnPlatform,
     convenienceFee,
     gstOnConvenience,
     totalWithoutDiscount,
+    hotelDiscount,
     couponDiscount,
+    totalDiscount,
     finalPrice,
   };
 };
@@ -215,13 +250,12 @@ const BookingSummary = () => {
   const hotel = location.state?.hotelData;
   const room = location.state?.selectedRoom;
   const selectedSlot = location.state?.selectedSlot;
-  const pricingDetails = location.state?.pricingDetails;
+  const selectedMealPlan = location.state?.selectedMealPlan;
+  const pricingDetails = location.state?.pricingDetails || {};
   const inventoryData = location.state?.inventoryData || [];
 
-  console.log("Received pricingDetails:", pricingDetails);
-  console.log("Received inventoryData:", inventoryData);
-
   const queryParams = new URLSearchParams(location.search);
+  console.log("BookingSummary - location:", location.state);
 
   const initialBookingType = queryParams.get("bookingType");
   const initialCheckinTime = queryParams.get("time");
@@ -269,10 +303,23 @@ const BookingSummary = () => {
   const [termsChecked, setTermsChecked] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
 
-  // Coupon state - Auto applied by default
+  // Discount states
+  const [hotelDiscountData, setHotelDiscountData] = useState<any[]>([]);
+  const [loadingHotelDiscount, setLoadingHotelDiscount] = useState(false);
+  const [hotelDiscountApplied, setHotelDiscountApplied] = useState(false);
+  const [hotelDiscount, setHotelDiscount] = useState<{
+    id: number;
+    hotelId: number;
+    roomId: number | null;
+    discountType: 'percentage' | 'flat';
+    discountValue: number;
+    isActive: boolean;
+  } | null>(null);
+
+  // Coupon state
   const [couponCode, setCouponCode] = useState("HUTS4U");
   const [couponApplied, setCouponApplied] = useState(true);
-  const [couponError, setCouponError] = useState("");
+  const [couponValue] = useState(0.05); // 5% coupon
 
   // Validation error state
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -292,6 +339,11 @@ const BookingSummary = () => {
 
   // Store calculated price
   const [calculatedPrice, setCalculatedPrice] = useState<any>(null);
+
+  // Meal plan state
+  const [mealPlan, setMealPlan] = useState<string>(selectedMealPlan || "EP");
+  const [mealPlanPrice, setMealPlanPrice] = useState<number>(pricingDetails?.mealPlanPrice || 0);
+  const [mealPlanDescription, setMealPlanDescription] = useState<string>(pricingDetails?.mealPlanDescription || "");
 
   // Refs for scrolling to fields
   const nameFieldRef = useRef<HTMLInputElement>(null);
@@ -330,18 +382,6 @@ const BookingSummary = () => {
       dayjs(inv.date).format('YYYY-MM-DD') === checkDay
     );
 
-    console.log("DEBUG getInventoryPriceForDate:", {
-      checkDay,
-      slot,
-      dayInventory,
-      roomRates: {
-        rateFor3Hour: room.rateFor3Hour,
-        rateFor6Hour: room.rateFor6Hour,
-        rateFor12Hour: room.rateFor12Hour,
-        rateFor1Night: room.rateFor1Night
-      }
-    });
-
     if (!dayInventory) {
       // If no inventory data, fall back to room rates
       switch (slot) {
@@ -350,7 +390,7 @@ const BookingSummary = () => {
         case 'rateFor3Hour':
           return room.rateFor3Hour || 0;
         case 'rateFor6Hour':
-          return room.rateFor6Hour || 0;  // FIXED: Added missing case
+          return room.rateFor6Hour || 0;
         case 'rateFor12Hour':
           return room.rateFor12Hour || 0;
         default:
@@ -365,7 +405,7 @@ const BookingSummary = () => {
       case 'rateFor3Hour':
         return dayInventory.threeHourRate || room.rateFor3Hour || 0;
       case 'rateFor6Hour':
-        return dayInventory.sixHourRate || room.rateFor6Hour || 0;  // FIXED: Added missing case
+        return dayInventory.sixHourRate || room.rateFor6Hour || 0;
       case 'rateFor12Hour':
         return dayInventory.twelveHourRate || room.rateFor12Hour || 0;
       default:
@@ -433,13 +473,79 @@ const BookingSummary = () => {
     }
   }, [adults, children, room]);
 
+  // Fetch hotel discounts when component mounts or hotel changes - USE MYSQL ID
+  useEffect(() => {
+    if (hotel?.id) {
+      fetchHotelDiscounts();
+    }
+  }, [hotel?.id]);
+
   // Initialize calculated price from pricingDetails
   useEffect(() => {
     if (pricingDetails) {
-      console.log("Initializing calculatedPrice from pricingDetails:", pricingDetails);
       setCalculatedPrice(pricingDetails);
+      // Set meal plan details from pricingDetails
+      if (pricingDetails.mealPlanPrice) {
+        setMealPlanPrice(pricingDetails.mealPlanPrice);
+      }
+      if (pricingDetails.mealPlanDescription) {
+        setMealPlanDescription(pricingDetails.mealPlanDescription);
+      }
     }
   }, [pricingDetails]);
+
+  // Fetch hotel discounts - USE MYSQL ID
+  const fetchHotelDiscounts = async () => {
+    if (!hotel?.id) return;
+
+    setLoadingHotelDiscount(true);
+    try {
+      const payload = {
+        data: {
+          filter: "",
+          hotelId: parseInt(hotel.id), // Use MySQL ID
+          isActive: true
+        },
+        page: 0,
+        pageSize: 1000,
+        order: [["createdAt", "ASC"]]
+      };
+
+      const response = await getHotelDiscount(payload);
+
+      // Handle different response structures
+      let discountsData = [];
+      if (response?.data?.data?.rows) {
+        discountsData = response.data.data.rows;
+      } else if (response?.data?.data) {
+        discountsData = response.data.data;
+      } else if (response?.data) {
+        discountsData = Array.isArray(response.data) ? response.data : [response.data];
+      }
+
+      setHotelDiscountData(discountsData);
+
+      // Auto-apply the first active discount
+      if (discountsData.length > 0) {
+        const firstDiscount = discountsData[0];
+        setHotelDiscount({
+          id: firstDiscount.id,
+          hotelId: firstDiscount.hotelId,
+          roomId: firstDiscount.roomId,
+          discountType: firstDiscount.discountType,
+          discountValue: parseFloat(firstDiscount.discountValue) || 0,
+          isActive: firstDiscount.isActive
+        });
+        setHotelDiscountApplied(true);
+        toast.success(`Hotel discount applied: ${firstDiscount.discountValue}${firstDiscount.discountType === 'percentage' ? '%' : '₹'} off`);
+      }
+    } catch (error) {
+      console.error("Error fetching hotel discounts:", error);
+      toast.error("Failed to load hotel discounts");
+    } finally {
+      setLoadingHotelDiscount(false);
+    }
+  };
 
   // Load user profile and GST records on component mount
   useEffect(() => {
@@ -471,7 +577,6 @@ const BookingSummary = () => {
     setLoadingGSTRecords(true);
     try {
       const response = await getAllGSTByUserId(userId);
-      console.log("GST API Response:", response);
 
       let gstRecords: any[] = [];
 
@@ -483,8 +588,6 @@ const BookingSummary = () => {
       else if (Array.isArray(response?.data)) {
         gstRecords = response.data;
       }
-
-      console.log("Raw GST Records:", gstRecords);
 
       // Transform the data: extract gst_detail objects
       const transformedRecords = gstRecords.map((record: any) => {
@@ -505,8 +608,6 @@ const BookingSummary = () => {
         return record;
       });
 
-      console.log("Transformed GST Records:", transformedRecords);
-
       setUserGSTRecords(transformedRecords);
 
       // If user has verified GST records, automatically select the first verified one
@@ -517,12 +618,8 @@ const BookingSummary = () => {
         );
       });
 
-      console.log("Verified GST Records:", verifiedRecords);
-
       if (verifiedRecords.length > 0) {
         const firstRecord = verifiedRecords[0];
-        console.log("Auto-selecting GST Record:", firstRecord);
-
         setSelectedGSTRecord(firstRecord);
         setGstinNumber(firstRecord.gstNumber || "");
         setLegalName(firstRecord.legalName || firstRecord.tradeName || "");
@@ -534,21 +631,51 @@ const BookingSummary = () => {
 
         toast.success(`Auto-selected GST: ${firstRecord.gstNumber}`);
       } else if (transformedRecords.length > 0) {
-        // If there are records but none verified, still show them
-        console.log("Showing non-verified GST records");
-
         // Auto-open GST section if records exist
         setGstSectionOpen(true);
       }
     } catch (error: any) {
       console.error("Error loading GST records:", error);
-      // Don't show toast to avoid annoying users for this optional feature
     } finally {
       setLoadingGSTRecords(false);
     }
   };
 
-  // STEP 2: Handle GST verification and creation
+  // Handle hotel discount apply/remove
+  const handleApplyHotelDiscount = () => {
+    if (hotelDiscountData.length > 0 && !hotelDiscountApplied) {
+      const firstDiscount = hotelDiscountData[0];
+      setHotelDiscount({
+        id: firstDiscount.id,
+        hotelId: firstDiscount.hotelId,
+        roomId: firstDiscount.roomId,
+        discountType: firstDiscount.discountType,
+        discountValue: parseFloat(firstDiscount.discountValue) || 0,
+        isActive: firstDiscount.isActive
+      });
+      setHotelDiscountApplied(true);
+      toast.success(`Hotel discount applied: ${firstDiscount.discountValue}${firstDiscount.discountType === 'percentage' ? '%' : '₹'} off`);
+    }
+  };
+
+  const handleRemoveHotelDiscount = () => {
+    setHotelDiscount(null);
+    setHotelDiscountApplied(false);
+    toast.info("Hotel discount removed");
+  };
+
+  // Handle coupon removal
+  const handleRemoveCoupon = () => {
+    setCouponApplied(false);
+    toast.info("Huts4u Discount removed");
+  };
+
+  const handleApplyCoupon = () => {
+    setCouponApplied(true);
+    toast.success("Huts4u Discount applied!");
+  };
+
+  // Handle GST verification and creation
   const handleVerifyGST = async () => {
     if (!gstinNumber.trim()) {
       toast.error("Please enter GSTIN number");
@@ -574,7 +701,7 @@ const BookingSummary = () => {
       // Prepare GST payload - only include userId if logged in
       const gstPayload = {
         gstNumber: gstinNumber.toUpperCase(),
-        ...(userId && { userId }) // Include user ID only if logged in
+        ...(userId && { userId })
       };
 
       // Call createGST API (which will verify via API)
@@ -708,8 +835,6 @@ const BookingSummary = () => {
       const payLoad = {
         userId: getUserId()
       }
-      console.log(gstId);
-      console.log(payLoad);
       const response = await deleteGST(gstId, payLoad.userId);
       if (response?.data?.success) {
         toast.success("GST removed from your account");
@@ -834,44 +959,51 @@ const BookingSummary = () => {
 
   const nights = calculateNights();
 
-  // Calculate price breakdown WITHOUT extra guest charges
+  // Calculate price breakdown WITH MEAL PLAN & DISCOUNTS
   const calculateTotalPrice = () => {
     // If we have calculatedPrice from props or previous calculation, use it
     if (calculatedPrice && !editingCheckin && !editingCheckout && !editingTime) {
-      console.log("Using existing calculatedPrice:", calculatedPrice);
-
-      // Calculate coupon discount based on existing total
-      let couponDiscount = 0;
-      let totalWithoutDiscount = calculatedPrice.totalPrice || 0;
-
-      if (couponApplied) {
-        couponDiscount = totalWithoutDiscount * 0.05;
+      // Calculate multiplier WITHOUT extra guest charges
+      let totalMultiplier;
+      if (bookingType === "hourly") {
+        const hoursMultiplier = slotDuration / 3;
+        totalMultiplier = requiredRooms * hoursMultiplier;
+      } else {
+        totalMultiplier = requiredRooms * nights;
       }
 
-      const finalPrice = totalWithoutDiscount - couponDiscount;
+      // Get meal plan price (per room per night)
+      const totalMealPlanPrice = mealPlanPrice * requiredRooms * (bookingType === "hourly" ? 1 : nights);
+
+      // Total base price including meal plan
+      const totalBasePrice = (calculatedPrice.basePrice || 0) + totalMealPlanPrice;
+
+      // Calculate breakdown with both discounts
+      const breakdown = calculatePriceBreakdown(
+        calculatedPrice.basePrice || 0,
+        totalMealPlanPrice,
+        {
+          hotelDiscountValue: hotelDiscountApplied ? hotelDiscount?.discountValue || 0 : 0,
+          hotelDiscountType: hotelDiscountApplied ? hotelDiscount?.discountType || null : null,
+          couponApplied,
+          couponValue: 0.05 // 5% coupon
+        }
+      );
 
       return {
-        basePrice: calculatedPrice.basePrice || 0,
-        gstOnBase: calculatedPrice.gstOnBase || 0,
-        platformFee: calculatedPrice.platformFee || 0,
-        gstOnPlatform: calculatedPrice.gstOnPlatform || 0,
-        convenienceFee: calculatedPrice.gatewayFee || 0,
-        gstOnConvenience: (calculatedPrice.gatewayFee || 0) * 0.18,
-        totalWithoutDiscount: totalWithoutDiscount,
-        couponDiscount,
-        finalPrice,
+        ...breakdown,
         nights,
-        totalMultiplier: requiredRooms * (bookingType === "hourly" ? slotDuration / 3 : nights),
+        totalMultiplier,
         bookingType,
         slotDuration,
         requiredRooms,
         unitBase: (calculatedPrice.basePrice || 0) / requiredRooms / (bookingType === "hourly" ? slotDuration / 3 : nights),
+        totalMealPlanPrice,
+        mealPlanDescription,
       };
     }
 
     // Otherwise calculate from scratch
-    console.log("Calculating price from scratch...");
-
     // Calculate multiplier WITHOUT extra guest charges
     let totalMultiplier;
     if (bookingType === "hourly") {
@@ -883,8 +1015,20 @@ const BookingSummary = () => {
 
     const totalBasePrice = unitBase * totalMultiplier;
 
-    // Calculate breakdown with coupon (NO extra guest charges added here)
-    const breakdown = calculatePriceBreakdown(totalBasePrice, couponApplied);
+    // Get meal plan price (per room per night)
+    const totalMealPlanPrice = mealPlanPrice * requiredRooms * (bookingType === "hourly" ? 1 : nights);
+
+    // Calculate breakdown with both discounts
+    const breakdown = calculatePriceBreakdown(
+      totalBasePrice,
+      totalMealPlanPrice,
+      {
+        hotelDiscountValue: hotelDiscountApplied ? hotelDiscount?.discountValue || 0 : 0,
+        hotelDiscountType: hotelDiscountApplied ? hotelDiscount?.discountType || null : null,
+        couponApplied,
+        couponValue: 0.05 // 5% coupon
+      }
+    );
 
     return {
       ...breakdown,
@@ -894,53 +1038,55 @@ const BookingSummary = () => {
       slotDuration,
       requiredRooms,
       unitBase,
+      totalMealPlanPrice,
+      mealPlanDescription,
     };
   };
 
   const priceBreakdown = calculateTotalPrice();
   const {
     basePrice: totalBase,
+    mealPlanPrice: totalMealPlan,
     gstOnBase,
     platformFee,
     gstOnPlatform,
     convenienceFee,
     gstOnConvenience,
     totalWithoutDiscount,
+    hotelDiscount: hotelDiscountAmount,
     couponDiscount,
+    totalDiscount,
     finalPrice,
     unitBase: inventoryUnitBase,
+    mealPlanDescription: mealDesc,
   } = priceBreakdown;
 
   // Display values for UI
-  const displayBase = totalBase;
+  const displayBase = totalBase + totalMealPlan;
   const displayBasePlus700 = displayBase + 700;
-  const displayCombinedBasePlatform = totalBase + platformFee;
+  const displayCombinedBasePlatform = displayBase + platformFee;
   const displayGstTotal = gstOnBase + gstOnPlatform + convenienceFee + gstOnConvenience;
-  const payableAfterCoupon = Number(finalPrice.toFixed(2));
+  const payableAfterDiscount = Number(finalPrice.toFixed(2));
 
   // Invoice pieces
   const serviceTaxableValue = platformFee;
   const cgstOnService = gstOnPlatform / 2;
   const sgstOnService = gstOnPlatform / 2;
   const convenienceFeeInclGst = convenienceFee + gstOnConvenience;
-  const grandTotal = payableAfterCoupon;
+  const grandTotal = payableAfterDiscount;
 
-  // Handle coupon removal
-  const handleRemoveCoupon = () => {
-    setCouponApplied(false);
-    toast.info("Huts4u Discount removed. Prices updated.");
-  };
-
-  const handleApplyCoupon = () => {
-    setCouponApplied(true);
-    toast.success("Huts4u Discount applied!");
-  };
-
-  // STEP 3: Handle payment with GST data in payload
+  // STEP 3: Handle payment with GST data in payload - USE MYSQL ID FOR HOTEL
   const handlePayment = async () => {
     try {
       if (!grandTotal || grandTotal <= 0) {
         toast.error("Booking amount cannot be zero.");
+        return;
+      }
+
+      // Get hotel ID - prefer MySQL id over MongoDB _id
+      const hotelId = hotel?.id || hotel?._id;
+      if (!hotelId) {
+        toast.error("Hotel information is missing");
         return;
       }
 
@@ -957,15 +1103,53 @@ const BookingSummary = () => {
         };
       }
 
+      // Prepare discount data for booking payload
+      const discountData = {
+        hotelDiscount: hotelDiscountApplied ? {
+          discountId: hotelDiscount?.id,
+          discountType: hotelDiscount?.discountType,
+          discountValue: hotelDiscount?.discountValue,
+          discountAmount: hotelDiscountAmount
+        } : null,
+        couponDiscount: couponApplied ? {
+          couponCode,
+          discountValue: 0.05,
+          discountAmount: couponDiscount
+        } : null,
+        totalDiscount
+      };
+
       const payLoad = {
         amount: Math.round(grandTotal),
         currency: "INR",
-        // Include GST data in the order payload
+        // Include GST and discount data in the order payload
         metadata: {
           gstDetails: gstDataForBooking,
+          discountDetails: discountData,
           bookingType,
-          hotelId: hotel?._id,
-          roomId: room?._id,
+          hotelId: hotelId, // Use the determined hotel ID
+          roomId: room?.id || room?._id, // Use room ID (MySQL or MongoDB)
+          mealPlan,
+          mealPlanPrice: totalMealPlan,
+          mealPlanDescription: mealDesc,
+          checkinDate,
+          checkOutDate,
+          checkinTime,
+          slotDuration,
+          rooms: requiredRooms,
+          adults,
+          children,
+          extraGuestCount,
+          extraGuestCharge,
+          guestsPerRoom,
+          bookingDetails: {
+            propertyName: hotel?.propertyName,
+            roomCategory: room?.roomCategory,
+            address: hotel?.address,
+            checkInDate: dayjs(checkinDate).format("DD MMM YYYY"),
+            checkOutDate: dayjs(checkOutDate).format("DD MMM YYYY"),
+            duration: bookingType === "hourly" ? `${slotDuration} hours` : `${nights} nights`,
+          }
         }
       };
 
@@ -1031,7 +1215,6 @@ const BookingSummary = () => {
         };
         sendOTP(payLoad)
           .then((res) => {
-            console.log(res);
             setShowOtpModal(true);
             toast("OTP sent successfully. Please verify the OTP.");
             setOtpData({
@@ -1188,6 +1371,15 @@ Please ensure you have read and understood all applicable policies.
     );
 
     return dayInventory ? "Dynamic Inventory Pricing" : "Standard Rate";
+  };
+
+  // Get discount type icon and label
+  const getDiscountTypeIcon = (type: string) => {
+    return type === 'percentage' ? <PercentIcon /> : <MoneyIcon />;
+  };
+
+  const getDiscountTypeLabel = (type: string) => {
+    return type === 'percentage' ? '% off' : '₹ off';
   };
 
   return (
@@ -1386,22 +1578,6 @@ Please ensure you have read and understood all applicable policies.
                                 ))}
                               </Select>
                             </FormControl>
-                            {/* <TextField
-                              select
-                              size="small"
-                              label="Duration"
-                              value={tempSlotDuration}
-                              onChange={(e) => {
-                                setTempSlotDuration(Number(e.target.value));
-                                // Reset calculated price when duration changes
-                                setCalculatedPrice(null);
-                              }}
-                              sx={{ minWidth: 100 }}
-                            >
-                              <MenuItem value={3}>3 hrs</MenuItem>
-                              <MenuItem value={6}>6 hrs</MenuItem>
-                              <MenuItem value={12}>12 hrs</MenuItem>
-                            </TextField> */}
                           </Box>
                           <Box sx={{ display: "flex", gap: 1 }}>
                             <IconButton size="small" onClick={handleTimeSave} sx={{ color: "green" }}>
@@ -1518,6 +1694,20 @@ Please ensure you have read and understood all applicable policies.
                 <Typography sx={typoStyle}>
                   <strong>Room type:</strong> {room?.roomCategory}
                 </Typography>
+
+                {/* Meal Plan Information */}
+                {mealPlanPrice > 0 && mealDesc && (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Typography sx={{
+                      ...typoStyle,
+                      bgcolor: '#e8f5e9',
+                      border: '1px solid #c8e6c9'
+                    }}>
+                      <strong>Meal Plan:</strong> {mealDesc}
+                    </Typography>
+                    <RestaurantIcon fontSize="small" sx={{ color: color.firstColor }} />
+                  </Box>
+                )}
 
                 {/* Auto-calculated Room Info */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1794,8 +1984,209 @@ Please ensure you have read and understood all applicable policies.
               }}
             />
 
+
+            {/* DISCOUNT SECTION */}
+            <Box sx={{ mt: 3, mb: 2 }}>
+              <Typography
+                variant="subtitle1"
+                sx={{ color: color.firstColor, fontWeight: "bold", mb: 1 }}
+              >
+                Available Discounts
+              </Typography>
+
+              {/* Hotel Discount Section */}
+              {hotelDiscountData.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  {hotelDiscountApplied ? (
+                    <Box sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: "#e8f5e9",
+                      border: "1px solid #c8e6c9",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      animation: hotelDiscount ? 'fadeInScale 0.5s ease-out' : 'none',
+                      '@keyframes fadeInScale': {
+                        '0%': {
+                          opacity: 0,
+                          transform: 'scale(0.95)',
+                        },
+                        '100%': {
+                          opacity: 1,
+                          transform: 'scale(1)',
+                        }
+                      }
+                    }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <DiscountIcon color="success" />
+                        <Box>
+                          <Typography sx={{ fontWeight: 600, color: "#2e7d32" }}>
+                            Hotel Discount Applied
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: "#388e3c", display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {getDiscountTypeIcon(hotelDiscount?.discountType || 'flat')}
+                            {hotelDiscount?.discountValue || 0}{getDiscountTypeLabel(hotelDiscount?.discountType || 'flat')}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: "#666", display: "block", mt: 0.5 }}>
+                            You saved ₹ {hotelDiscountAmount.toFixed(2)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        onClick={handleRemoveHotelDiscount}
+                      >
+                        Remove
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: "#e3f2fd",
+                      border: "1px solid #bbdefb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between"
+                    }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <DiscountIcon color="primary" />
+                        <Box>
+                          <Typography sx={{ fontWeight: 600, color: "#1565c0" }}>
+                            Hotel Discount Available
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: "#1976d2", display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {getDiscountTypeIcon(hotelDiscountData[0].discountType)}
+                            {hotelDiscountData[0].discountValue}{getDiscountTypeLabel(hotelDiscountData[0].discountType)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Button
+                        variant="contained"
+                        sx={{ background: color.firstColor }}
+                        size="small"
+                        onClick={handleApplyHotelDiscount}
+                      >
+                        Apply
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* Huts4u Discount Section */}
+              {couponApplied ? (
+                <Box sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: "#e8f5e9",
+                  border: "1px solid #c8e6c9",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  animation: couponApplied ? 'fadeInScale 0.5s ease-out' : 'none',
+                }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <OfferIcon color="success" />
+                    <Box>
+                      <Typography sx={{ fontWeight: 600, color: "#2e7d32" }}>
+                        Huts4u Discount Applied
+                      </Typography>
+
+                      <Typography variant="caption" sx={{ color: "#666", display: "block", mt: 0.5 }}>
+                        You saved ₹ {couponDiscount.toFixed(2)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    size="small"
+                    onClick={handleRemoveCoupon}
+                  >
+                    Remove
+                  </Button>
+                </Box>
+              ) : (
+                <Box sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: "#fff3e0",
+                  border: "1px solid #ffcc80",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between"
+                }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <OfferIcon color="warning" />
+                    <Box>
+                      <Typography sx={{ fontWeight: 600, color: "#e65100" }}>
+                        Huts4u Discount Available
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "#e65100" }}>
+                        5% off on total amount
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    sx={{ background: color.firstColor }}
+                    size="small"
+                    onClick={handleApplyCoupon}
+                  >
+                    Apply
+                  </Button>
+                </Box>
+              )}
+
+              {/* Combined Discount Summary */}
+              {(hotelDiscountApplied || couponApplied) && (
+                <Box sx={{
+                  mt: 2,
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: "#f5f0ff",
+                  border: "1px solid #d1c4e9",
+                  animation: 'slideInFromLeft 0.5s ease-out',
+                  '@keyframes slideInFromLeft': {
+                    '0%': {
+                      opacity: 0,
+                      transform: 'translateX(-20px)',
+                    },
+                    '100%': {
+                      opacity: 1,
+                      transform: 'translateX(0)',
+                    }
+                  }
+                }}>
+                  <Typography sx={{ fontSize: 14, fontWeight: 600, color: color.firstColor, mb: 0.5 }}>
+                    Total Discounts Applied:
+                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ color: "#666" }}>
+                      Total savings:
+                    </Typography>
+                    <Typography variant="body2" sx={{
+                      fontWeight: 600,
+                      color: "#2e7d32",
+                      animation: totalDiscount > 0 ? 'pulse 1s ease-in-out' : 'none',
+                      '@keyframes pulse': {
+                        '0%': { transform: 'scale(1)' },
+                        '50%': { transform: 'scale(1.1)' },
+                        '100%': { transform: 'scale(1)' },
+                      }
+                    }}>
+                      ₹ {totalDiscount.toFixed(2)}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+
             {/* GST SECTION */}
-            {/* GST SECTION - OPTIONAL */}
             <Box sx={{ mt: 3, mb: 2 }}>
               <Box sx={{
                 display: 'flex',
@@ -2423,84 +2814,6 @@ Please ensure you have read and understood all applicable policies.
               )}
             </Box>
 
-            {/* Coupon Section - Auto Applied */}
-            <Box sx={{ mt: 3, mb: 2 }}>
-              <Typography
-                variant="subtitle1"
-                sx={{ color: color.firstColor, fontWeight: "bold", mb: 1 }}
-              >
-                Huts4u Discount
-              </Typography>
-
-              {couponApplied ? (
-                <Box sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  bgcolor: "#e8f5e9",
-                  border: "1px solid #c8e6c9",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between"
-                }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <OfferIcon color="success" />
-                    <Box>
-                      <Typography sx={{ fontWeight: 600, color: "#2e7d32" }}>
-                        HUTS4U Discount Applied
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: "#388e3c" }}>
-                        discount on total amount
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: "#666", display: "block", mt: 0.5 }}>
-                        You saved ₹ {couponDiscount.toFixed(2)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    onClick={handleRemoveCoupon}
-                  >
-                    Remove
-                  </Button>
-                </Box>
-              ) : (
-                <Box sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  bgcolor: "#fff3e0",
-                  border: "1px solid #ffcc80",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between"
-                }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <OfferIcon color="warning" />
-                    <Box>
-                      <Typography sx={{ fontWeight: 600, color: "#e65100" }}>
-                        Huts4u Discount Available
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Button
-                    variant="contained"
-                    sx={{ background: color.firstColor }}
-                    size="small"
-                    onClick={handleApplyCoupon}
-                  >
-                    Apply
-                  </Button>
-                </Box>
-              )}
-
-              {couponApplied && (
-                <Typography sx={{ color: "green", fontSize: 12, mt: 1, textAlign: "center" }}>
-                  ✓  Huts4u Discount automatically applied to your booking
-                </Typography>
-              )}
-            </Box>
-
             {/* Terms acceptance checkbox */}
             <Box sx={{ mt: 2 }}>
               <FormControlLabel
@@ -2565,7 +2878,7 @@ Please ensure you have read and understood all applicable policies.
               token={otpData.token}
             />
 
-            {/* Razorpay - STEP 3: Pass GST data to booking payload */}
+            {/* Razorpay - Pass all data including discounts */}
             {orderDetails && (
               <RenderRazorpay
                 orderDetails={orderDetails}
@@ -2582,6 +2895,20 @@ Please ensure you have read and understood all applicable policies.
                     gstRecordId: selectedGSTRecord?.id || selectedGSTRecord?._id,
                     gstStatus: selectedGSTRecord?.gstStatus || "Active",
                   } : null,
+                  discountDetails: {
+                    hotelDiscount: hotelDiscountApplied ? {
+                      discountId: hotelDiscount?.id,
+                      discountType: hotelDiscount?.discountType,
+                      discountValue: hotelDiscount?.discountValue,
+                      discountAmount: hotelDiscountAmount
+                    } : null,
+                    couponDiscount: couponApplied ? {
+                      couponCode,
+                      discountValue: 0.05,
+                      discountAmount: couponDiscount
+                    } : null,
+                    totalDiscount
+                  },
                   timing: calculateCheckoutTime(),
                   pricingDetails: {
                     ...priceBreakdown,
@@ -2599,6 +2926,9 @@ Please ensure you have read and understood all applicable policies.
                     guestsPerRoom,
                     inventoryData,
                     unitBase: inventoryUnitBase,
+                    mealPlan,
+                    mealPlanPrice: totalMealPlan,
+                    mealPlanDescription: mealDesc,
                   },
                   bookingType,
                   rooms: requiredRooms.toString(),
@@ -2611,6 +2941,7 @@ Please ensure you have read and understood all applicable policies.
         </CardContent>
       </Card>
 
+      {/* RIGHT: BILL SUMMARY */}
       {/* RIGHT: BILL SUMMARY */}
       <Card
         sx={{
@@ -2631,6 +2962,48 @@ Please ensure you have read and understood all applicable policies.
           >
             Your Bill Summary
           </Typography>
+
+          {/* Discounts Applied Badge */}
+          {(hotelDiscountApplied || couponApplied) && (
+            <Box sx={{
+              mb: 2,
+              p: 1.5,
+              bgcolor: "#e8f5e9",
+              borderRadius: 1,
+              border: "1px solid #c8e6c9",
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}>
+              <DiscountIcon color="success" fontSize="small" />
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: "#2e7d32" }}>
+                  Discounts Applied
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#388e3c", display: "block" }}>
+                  Total savings: ₹ {totalDiscount.toFixed(2)}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                  {hotelDiscountApplied && (
+                    <Chip
+                      size="small"
+                      label={`Hotel Discount: ₹ ${hotelDiscountAmount.toFixed(2)}`}
+                      color="success"
+                      variant="outlined"
+                    />
+                  )}
+                  {couponApplied && (
+                    <Chip
+                      size="small"
+                      label={`Huts4u: ₹ ${couponDiscount.toFixed(2)}`}
+                      color="primary"
+                      variant="outlined"
+                    />
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          )}
 
           {/* GST Info Badge if GST is added */}
           {gstVerificationStatus === "verified" && (
@@ -2659,6 +3032,33 @@ Please ensure you have read and understood all applicable policies.
             </Box>
           )}
 
+          {/* Meal Plan Info Badge - Show from pricingDetails */}
+          {pricingDetails?.mealPlanPrice > 0 && pricingDetails?.mealPlanDescription && (
+            <Box sx={{
+              mb: 2,
+              p: 1.5,
+              bgcolor: "#fff3e0",
+              borderRadius: 1,
+              border: "1px solid #ffcc80",
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}>
+              <RestaurantIcon color="warning" fontSize="small" />
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: "#e65100" }}>
+                  Meal Plan Included
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#e65100", display: "block" }}>
+                  {pricingDetails.mealPlanDescription}
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#666", display: "block" }}>
+                  Meal charges included in base price
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
           {/* Price Source Indicator */}
           <Box sx={{
             mb: 2,
@@ -2675,9 +3075,19 @@ Please ensure you have read and understood all applicable policies.
                 ? `${slotDuration} hrs • ${requiredRooms} room${requiredRooms && requiredRooms > 1 ? 's' : ''}`
                 : `${nights} night${nights > 1 ? 's' : ''} • ${requiredRooms} room${requiredRooms && requiredRooms > 1 ? 's' : ''}`}
             </Typography>
+            {pricingDetails?.mealPlanPrice > 0 && (
+              <Typography variant="caption" sx={{ color: "#e65100", fontWeight: 600, mt: 0.5, display: 'block' }}>
+                ✓ {pricingDetails.mealPlanDescription} Included
+              </Typography>
+            )}
             {couponApplied && (
               <Typography variant="caption" sx={{ color: "green", fontWeight: 600, mt: 0.5, display: 'block' }}>
                 ✓  Huts4u Discount Applied
+              </Typography>
+            )}
+            {hotelDiscountApplied && (
+              <Typography variant="caption" sx={{ color: "#2e7d32", fontWeight: 600, mt: 0.5, display: 'block' }}>
+                ✓  Hotel Discount Applied
               </Typography>
             )}
           </Box>
@@ -2704,7 +3114,7 @@ Please ensure you have read and understood all applicable policies.
             </Box>
           )}
 
-          {/* TOP: Compact price view */}
+          {/* TOP: Compact price view with animation */}
           <div
             style={{
               marginTop: "10px",
@@ -2715,27 +3125,29 @@ Please ensure you have read and understood all applicable policies.
               alignItems: "flex-end",
             }}
           >
-            {/* 1) Top struck-through bigger: base + 700 */}
-            <Typography
-              sx={{
-                fontSize: "16px",
-                color: color.forthColor,
-                textDecoration: "line-through",
-                fontWeight: 600,
-                opacity: 0.95,
-              }}
-            >
-              {displayBase > 0
-                ? `₹ ${displayBasePlus700.toFixed(0)}`
-                : "---"}
-            </Typography>
 
-            {/* 2) Main bold price = base + platform */}
+
+            {/* Main bold price = base + platform after discount */}
             <Typography
               sx={{
                 fontSize: "24px",
                 color: color.firstColor,
                 fontWeight: "bold",
+                animation: hotelDiscountApplied ? 'priceDropAnimation 0.6s ease-out' : 'none',
+                '@keyframes priceDropAnimation': {
+                  '0%': {
+                    opacity: 0,
+                    transform: 'scale(0.9)'
+                  },
+                  '70%': {
+                    opacity: 1,
+                    transform: 'scale(1.05)'
+                  },
+                  '100%': {
+                    opacity: 1,
+                    transform: 'scale(1)'
+                  }
+                }
               }}
             >
               {displayCombinedBasePlatform > 0
@@ -2743,7 +3155,7 @@ Please ensure you have read and understood all applicable policies.
                 : "—"}
             </Typography>
 
-            {/* 3) GST breakdown */}
+            {/* GST breakdown */}
             <Typography
               sx={{
                 fontSize: "13px",
@@ -2752,48 +3164,117 @@ Please ensure you have read and understood all applicable policies.
               }}
             >
               {displayGstTotal > 0 ? (
-                <>₹{displayGstTotal.toFixed(0)} taxes &amp; fees</>
+                <>+ ₹{displayGstTotal.toFixed(0)} taxes &amp; fees</>
               ) : (
                 "—"
               )}
             </Typography>
             <Divider sx={{ width: "100%", mt: 1 }} />
 
-            {/* 4) Final total */}
+            {/* Final total with discount animation */}
             <div style={{ width: "100%", textAlign: "right" }}>
-              {/* Show coupon amount if applied */}
-              {couponDiscount > 0 && couponApplied && (
-                <>
-                  <Typography sx={{ fontSize: 13, color: color.forthColor }}>
-                    Subtotal before discount: ₹ {totalWithoutDiscount.toFixed(2)}
+              {/* Show subtotal before discount */}
+              <Typography sx={{ fontSize: 13, color: color.forthColor }}>
+                Subtotal before discount: ₹ {totalWithoutDiscount.toFixed(2)}
+              </Typography>
+
+              {/* Show hotel discount if applied - with animation */}
+              {hotelDiscountApplied && hotelDiscountAmount > 0 && (
+                <Box sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  mt: 1,
+                  animation: 'slideInDiscount 0.5s ease-out',
+                  '@keyframes slideInDiscount': {
+                    '0%': {
+                      opacity: 0,
+                      transform: 'translateX(-20px)'
+                    },
+                    '100%': {
+                      opacity: 1,
+                      transform: 'translateX(0)'
+                    }
+                  }
+                }}>
+                  <Typography sx={{ fontSize: 14, color: "#2e7d32", fontWeight: 600 }}>
+                    Hotel Discount:
                   </Typography>
-                  <Typography
-                    sx={{
-                      fontSize: 14,
-                      color: "green",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Huts4u Discount: - ₹ {couponDiscount.toFixed(2)}
+                  <Typography sx={{
+                    fontSize: 14,
+                    color: "#2e7d32",
+                    fontWeight: 600,
+                    animation: 'discountFlash 0.8s ease-in-out',
+                    '@keyframes discountFlash': {
+                      '0%, 100%': { color: '#2e7d32' },
+                      '50%': { color: '#4caf50' }
+                    }
+                  }}>
+                    - ₹ {hotelDiscountAmount.toFixed(2)}
                   </Typography>
-                </>
+                </Box>
               )}
 
+              {/* Show coupon discount if applied */}
+              {couponApplied && couponDiscount > 0 && (
+                <Box sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  mt: 1,
+                  animation: 'slideInDiscount 0.5s ease-out 0.2s',
+                  animationFillMode: 'both'
+                }}>
+                  <Typography sx={{ fontSize: 14, color: "green", fontWeight: 600 }}>
+                    Huts4u Discount:
+                  </Typography>
+                  <Typography sx={{
+                    fontSize: 14,
+                    color: "green",
+                    fontWeight: 600,
+                    animation: 'discountFlash 0.8s ease-in-out 0.3s',
+                    animationFillMode: 'both'
+                  }}>
+                    - ₹ {couponDiscount.toFixed(2)}
+                  </Typography>
+                </Box>
+              )}
+
+              {/* Final Price with bounce animation */}
               <Typography
                 sx={{
                   fontSize: "16px",
                   color: color.firstColor,
                   fontWeight: "700",
-                  mt: (couponDiscount > 0 && couponApplied) ? 1 : 0,
+                  mt: (hotelDiscountAmount > 0 || couponDiscount > 0) ? 1 : 0,
+                  animation: hotelDiscountApplied || couponApplied ? 'bounceIn 0.8s ease-out' : 'none',
+                  '@keyframes bounceIn': {
+                    '0%': {
+                      opacity: 0,
+                      transform: 'scale(0.3)'
+                    },
+                    '50%': {
+                      opacity: 1,
+                      transform: 'scale(1.05)'
+                    },
+                    '70%': {
+                      transform: 'scale(0.95)'
+                    },
+                    '100%': {
+                      opacity: 1,
+                      transform: 'scale(1)'
+                    }
+                  }
                 }}
               >
                 {finalPrice > 0
-                  ? `Final: ₹ ${payableAfterCoupon.toFixed(2)}`
+                  ? `Final: ₹ ${payableAfterDiscount.toFixed(2)}`
                   : "---"}
               </Typography>
             </div>
           </div>
 
+          {/* DETAILED INVOICE-STYLE BREAKUP */}
           {/* DETAILED INVOICE-STYLE BREAKUP */}
           <Box
             sx={{
@@ -2815,19 +3296,19 @@ Please ensure you have read and understood all applicable policies.
               Detailed Breakup
             </Typography>
 
-            {/* 1. Base Price + Hotel GST */}
+            {/* 1. Base Price (Room + Meal Plan) */}
             <Typography sx={{ fontSize: 13 }}>
-              <strong>1. Base Price (Reimbursement)</strong>{" "}
-              <span style={{ fontSize: 11 }}>(HSN 9985)</span>
+              <strong>1. Base Price</strong>
               <span style={{ float: "right" }}>
-                ₹ {(totalBase + gstOnBase).toFixed(2)}
+                ₹ {(totalBase + totalMealPlan + gstOnBase).toFixed(2)}
               </span>
             </Typography>
 
+
             {/* 2. Service Charges + CGST + SGST */}
             <Typography sx={{ fontSize: 13, mt: 1 }}>
-              <strong>2. Service Charges</strong>{" "}
-              <span style={{ fontSize: 11 }}>(HSN 996111)</span>
+              <strong>2. Service Charges</strong>
+              <span style={{ fontSize: 11 }}> (HSN 996111)</span>
               <span style={{ float: "right" }}>
                 ₹ {serviceTaxableValue.toFixed(2)}
               </span>
@@ -2847,8 +3328,7 @@ Please ensure you have read and understood all applicable policies.
 
             {/* 3. Convenience Fees (Incl. GST) */}
             <Typography sx={{ fontSize: 13, mt: 1 }}>
-              <strong>3. Convenience Fees (Incl. GST)</strong>{" "}
-              <span style={{ fontSize: 11 }}>(Reimbursement, HSN 9985)</span>
+              <strong>3. Convenience Fees (Incl. GST)</strong>
               <span style={{ float: "right" }}>
                 ₹ {convenienceFeeInclGst.toFixed(2)}
               </span>
@@ -2866,63 +3346,204 @@ Please ensure you have read and understood all applicable policies.
               </Typography>
             </Box>
 
-            {/* DISCOUNT - Only show if applied */}
-            {couponApplied && couponDiscount > 0 && (
-              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1.5 }}>
-                <Typography sx={{ fontSize: 14, fontWeight: 600, color: "green" }}>
-                  Huts4u Discount:
-                </Typography>
-                <Typography sx={{ fontSize: 14, fontWeight: 600, color: "green" }}>
-                  - ₹ {couponDiscount.toFixed(2)}
-                </Typography>
-              </Box>
+            {/* DISCOUNTS */}
+            {(hotelDiscountApplied || couponApplied) && (
+              <>
+                {/* Hotel Discount */}
+                {hotelDiscountApplied && hotelDiscountAmount > 0 && (
+                  <Box sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    mb: 1,
+                    animation: hotelDiscountApplied ? 'slideInLeft 0.5s ease-out' : 'none',
+                    '@keyframes slideInLeft': {
+                      '0%': {
+                        opacity: 0,
+                        transform: 'translateX(-20px)'
+                      },
+                      '100%': {
+                        opacity: 1,
+                        transform: 'translateX(0)'
+                      }
+                    }
+                  }}>
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: "#2e7d32" }}>
+                      Hotel Discount:
+                    </Typography>
+                    <Typography sx={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "#2e7d32",
+                      animation: hotelDiscountApplied ? 'discountPulse 1s ease-in-out' : 'none',
+                      '@keyframes discountPulse': {
+                        '0%, 100%': { transform: 'scale(1)' },
+                        '50%': { transform: 'scale(1.1)' }
+                      }
+                    }}>
+                      - ₹ {hotelDiscountAmount.toFixed(2)}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Huts4u Discount */}
+                {couponApplied && couponDiscount > 0 && (
+                  <Box sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    mb: 1.5,
+                    animation: couponApplied ? 'slideInLeft 0.5s ease-out 0.2s' : 'none',
+                    animationFillMode: 'both'
+                  }}>
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: "green" }}>
+                      Huts4u Discount:
+                    </Typography>
+                    <Typography sx={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "green",
+                      animation: couponApplied ? 'discountPulse 1s ease-in-out 0.3s' : 'none',
+                      animationFillMode: 'both'
+                    }}>
+                      - ₹ {couponDiscount.toFixed(2)}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Total Discount */}
+                <Box sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  mb: 1.5,
+                  animation: totalDiscount > 0 ? 'slideInLeft 0.5s ease-out 0.4s' : 'none',
+                  animationFillMode: 'both'
+                }}>
+                  <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
+                    Total Discount:
+                  </Typography>
+                  <Typography sx={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "red",
+                    animation: totalDiscount > 0 ? 'highlightDiscount 1s ease-in-out' : 'none',
+                    '@keyframes highlightDiscount': {
+                      '0%': { color: 'red' },
+                      '50%': { color: '#ff6b6b' },
+                      '100%': { color: 'red' }
+                    }
+                  }}>
+                    - ₹ {totalDiscount.toFixed(2)}
+                  </Typography>
+                </Box>
+              </>
             )}
 
             <Divider sx={{ my: 1 }} />
 
+            {/* FINAL TOTAL AFTER DISCOUNT */}
+            <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+              <Typography sx={{ fontSize: 14, fontWeight: 600 }}>
+                Total After Discount:
+              </Typography>
+              <Typography sx={{ fontSize: 14, fontWeight: 600, color: color.firstColor }}>
+                ₹ {(totalWithoutDiscount - totalDiscount).toFixed(2)}
+              </Typography>
+            </Box>
+
             {/* FINAL TOTAL PAYABLE */}
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mt: 1.5 }}>
+            <Box sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              mt: 1.5,
+              pt: 1.5,
+              borderTop: '1px solid #ddd',
+              animation: finalPrice > 0 ? 'finalTotalAnimation 0.8s ease-out' : 'none',
+              '@keyframes finalTotalAnimation': {
+                '0%': {
+                  opacity: 0,
+                  transform: 'translateY(10px)'
+                },
+                '100%': {
+                  opacity: 1,
+                  transform: 'translateY(0)'
+                }
+              }
+            }}>
               <Typography sx={{ fontSize: 16, fontWeight: 700, color: color.firstColor }}>
                 Total Payable
               </Typography>
-              <Typography sx={{ fontSize: 18, fontWeight: 700, color: color.firstColor }}>
+              <Typography sx={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: color.firstColor,
+                animation: finalPrice > 0 ? 'totalBounce 0.8s ease-out' : 'none',
+                '@keyframes totalBounce': {
+                  '0%': { transform: 'scale(0.8)' },
+                  '50%': { transform: 'scale(1.1)' },
+                  '100%': { transform: 'scale(1)' }
+                }
+              }}>
                 ₹ {grandTotal.toFixed(2)}
               </Typography>
             </Box>
 
-            {/* GST Invoice Note if GST is added */}
-            {gstVerificationStatus === "verified" && (
-              <Box sx={{
-                mt: 1.5,
-                p: 1.5,
-                bgcolor: "#e8f5e9",
-                borderRadius: 1,
-                border: "1px solid #c8e6c9"
-              }}>
-                <Typography sx={{
-                  fontSize: 13,
-                  color: "#2e7d32",
-                  fontWeight: 600,
-                  textAlign: "center",
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 1
+            {/* Discount & GST Invoice Note */}
+            <Box sx={{ mt: 1.5 }}>
+              {(hotelDiscountApplied || couponApplied) && (
+                <Box sx={{
+                  p: 1.5,
+                  bgcolor: "#e8f5e9",
+                  borderRadius: 1,
+                  border: "1px solid #c8e6c9",
+                  mb: 1,
+                  animation: 'slideInBottom 0.5s ease-out',
+                  '@keyframes slideInBottom': {
+                    '0%': {
+                      opacity: 0,
+                      transform: 'translateY(20px)'
+                    },
+                    '100%': {
+                      opacity: 1,
+                      transform: 'translateY(0)'
+                    }
+                  }
                 }}>
-                  <VerifiedIcon fontSize="small" />
-                  GST Invoice will be generated with your booking
-                </Typography>
-              </Box>
-            )}
+                  <Typography sx={{
+                    fontSize: 13,
+                    color: "#2e7d32",
+                    fontWeight: 600,
+                    textAlign: "center"
+                  }}>
+                    🎉 You saved ₹ {totalDiscount.toFixed(2)} with discounts!
+                  </Typography>
+                </Box>
+              )}
 
-            {/* Additional savings note */}
-            {couponApplied && couponDiscount > 0 && (
-              <Box sx={{ mt: 1.5, p: 1.5, bgcolor: "#e8f5e9", borderRadius: 1 }}>
-                <Typography sx={{ fontSize: 13, color: "#2e7d32", fontWeight: 600, textAlign: "center" }}>
-                  🎉 You saved ₹ {couponDiscount.toFixed(2)} with Huts4u Discount!
-                </Typography>
-              </Box>
-            )}
+              {gstVerificationStatus === "verified" && (
+                <Box sx={{
+                  p: 1.5,
+                  bgcolor: "#e8f5e9",
+                  borderRadius: 1,
+                  border: "1px solid #c8e6c9",
+                  animation: 'slideInBottom 0.5s ease-out 0.2s',
+                  animationFillMode: 'both'
+                }}>
+                  <Typography sx={{
+                    fontSize: 13,
+                    color: "#2e7d32",
+                    fontWeight: 600,
+                    textAlign: "center",
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 1
+                  }}>
+                    <VerifiedIcon fontSize="small" />
+                    GST Invoice will be generated with your booking
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           </Box>
         </CardContent>
       </Card>

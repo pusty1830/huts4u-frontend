@@ -44,7 +44,7 @@ import {
   getMyAllHotelswithBelongsTo,
   getAllRatings,
   getAllInventories,
-  getHourlyClosures // Add this import
+  getHourlyClosures
 } from "../services/services";
 import SearchSection from "./Home Section/SearchSection";
 import dayjs from "dayjs";
@@ -173,7 +173,6 @@ const isSlotAvailable = (room: any, inventoryData: any[], checkDate: string, slo
   }
 };
 
-// Function to check hourly closure for a hotel
 // Function to check hourly closure for a hotel - INVERTED LOGIC
 const checkHourlyClosure = (
   hotel: any,
@@ -1387,9 +1386,9 @@ const HotelCard = ({
                   mt: { xs: 1, sm: 0 },
                   marginRight: { xs: 3 },
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: { xs: "44px", sm: "48px" },
+                    alignItems: "center",
+                    justifyContent: "center",
+                    height: { xs: "44px", sm: "48px" },
                 }}>
                   <Typography sx={{
                     fontSize: { xs: "14px", sm: "15px", md: "16px" },
@@ -1416,7 +1415,7 @@ const SearchResults = () => {
   const [paginatedData, setPaginatedData] = useState<any[]>([]);
   const [allRatings, setAllRatings] = useState<any>(null);
   const [inventoryData, setInventoryData] = useState<{ [key: string]: any[] }>({});
-  const [hourlyClosures, setHourlyClosures] = useState<HourlyClosure[]>([]); // Add hourly closures state
+  const [hourlyClosures, setHourlyClosures] = useState<HourlyClosure[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1728,7 +1727,85 @@ const SearchResults = () => {
         abortControllerRef.current.abort();
       }
     };
-  }, [location.search]); // Run when search params change
+  }, [location.search]);
+
+  // Function to calculate location relevance score
+  const calculateLocationRelevance = (hotel: any, searchTerm: string): number => {
+    let score = 0;
+    
+    if (!searchTerm.trim()) return score;
+    
+    const searchTermLower = searchTerm.toLowerCase().trim();
+    const hotelAddress = (hotel?.address || "").toLowerCase();
+    const hotelCity = (hotel?.city || "").toLowerCase();
+    const hotelName = (hotel?.propertyName || "").toLowerCase();
+    const hotelArea = (hotel?.area || "").toLowerCase();
+    
+    // Common Bhubaneswar areas/locations for better matching
+    const commonAreas = [
+      "patia", "sahid nagar", "jaydev vihar", "infocity", "rasulgarh", 
+      "vani vihar", "acharya vihar", "bapuji nagar", "baramunda", "bhubaneswar",
+      "bbsr", "railway station", "airport", "kiit", "soa", "sijua", "chandrasekharpur"
+    ];
+    
+    // Split search term into words
+    const searchWords = searchTermLower.split(/[,\s]+/).map(word => word.trim());
+    
+    // Check for exact area/location matches (highest priority)
+    for (const word of searchWords) {
+      // Exact match in area field
+      if (hotelArea === word) {
+        score += 100;
+      }
+      
+      // Exact match in address
+      if (hotelAddress.includes(word)) {
+        score += 80;
+      }
+      
+      // Exact match in city
+      if (hotelCity === word) {
+        score += 60;
+      }
+      
+      // Partial match in address
+      if (hotelAddress.includes(word) && word.length > 2) {
+        score += 40;
+      }
+      
+      // Check for near/close to search location mentions
+      if (hotelAddress.includes(`near ${word}`) || hotelAddress.includes(`close to ${word}`)) {
+        score += 70;
+      }
+      
+      // Check for hotel name containing the area
+      if (hotelName.includes(word)) {
+        score += 30;
+      }
+    }
+    
+    // Bonus for hotels in Bhubaneswar when searching for specific areas
+    if (hotelCity.includes("bhubaneswar") || hotelCity.includes("bbsr")) {
+      score += 10;
+    }
+    
+    // Check for common area synonyms
+    if (searchTermLower.includes("patia")) {
+      if (hotelArea.includes("patia") || hotelAddress.includes("patia")) {
+        score += 120; // Extra high score for exact Patia match
+      }
+    }
+    
+    // Check if search term contains "near" or "close to"
+    if (searchTermLower.includes("near ") || searchTermLower.includes("close to ")) {
+      const nearLocation = searchTermLower.replace(/(near |close to )/, "").trim();
+      if (hotelAddress.includes(nearLocation) || hotelArea.includes(nearLocation)) {
+        score += 90;
+      }
+    }
+    
+    return score;
+  };
 
   // Filter data based on search parameters
   useEffect(() => {
@@ -1754,20 +1831,6 @@ const SearchResults = () => {
         return perUnitFinal * multiplier;
       };
 
-      // Debug: Check how many hotels have hourly stay type
-      console.group('🔍 Hotel Stay Type Analysis');
-      const hourlyHotels = mergedData.filter(hotel => hotel?.rooms?.[0]?.stayType === "Hourly");
-      console.log(`Total hotels: ${mergedData.length}`);
-      console.log(`Hotels with stayType="Hourly": ${hourlyHotels.length}`);
-      console.log(`Hotels with stayType="Overnight": ${mergedData.filter(hotel => hotel?.rooms?.[0]?.stayType === "Overnight").length}`);
-      console.log(`Hotels with no stayType: ${mergedData.filter(hotel => !hotel?.rooms?.[0]?.stayType).length}`);
-
-      // Log all hourly hotels for debugging
-      hourlyHotels.forEach((hotel, index) => {
-        console.log(`${index + 1}. ${hotel.propertyName} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
-      });
-      console.groupEnd();
-
       // First, filter by booking type
       let filteredHotels = mergedData.filter((hotel: any) => {
         if (bookingType === "fullDay") {
@@ -1779,20 +1842,16 @@ const SearchResults = () => {
         if (bookingType === "hourly") {
           // Show ONLY hotels with hourly stay type
           const hasHourlyStay = hotel?.rooms?.[0]?.stayType === "Hourly";
-          console.log(hasHourlyStay)
           if (!hasHourlyStay) {
-            console.log(`❌ Filtered out: ${hotel.propertyName} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
             return false;
           }
 
           // Check hotel availability
           const hotelRoomAvailable = hotel?.roomAvailable || "Available";
           if (hotelRoomAvailable === "Unavailable") {
-            console.log(`⚠️ Sold out but showing: ${hotel.propertyName}`);
             return true; // Still show but as sold out
           }
 
-          console.log(`✅ Showing hourly hotel: ${hotel.propertyName}`);
           return true;
         }
 
@@ -1802,8 +1861,6 @@ const SearchResults = () => {
 
         return false;
       });
-
-      console.log(`📊 After stay type filter: ${filteredHotels.length} hotels`);
 
       // Budget filter - but for sold out hotels, still show them
       filteredHotels = filteredHotels.filter((hotel: any) => {
@@ -1817,25 +1874,24 @@ const SearchResults = () => {
 
         // For available hotels, apply budget filter
         const isInBudget = price >= minBudget && price <= maxBudget && price !== Infinity;
-        if (!isInBudget) {
-          console.log(`💰 Filtered by budget: ${hotel.propertyName} - price: ${price}`);
-        }
         return isInBudget;
       });
 
-      console.log(`📊 After budget filter: ${filteredHotels.length} hotels`);
-
-      // Add search relevance score for ALL hotels
+      // Calculate location relevance score for ALL hotels
       filteredHotels = filteredHotels.map((hotel: any) => {
         let relevanceScore = 0;
         let isExactMatch = false;
-
+        
+        // Calculate location relevance (NEW: Enhanced location scoring)
+        const locationRelevanceScore = calculateLocationRelevance(hotel, locationFilter);
+        relevanceScore += locationRelevanceScore;
+        
         if (locationFilter.trim() !== "") {
           const searchTerm = locationFilter.toLowerCase().trim();
-          const searchText = (hotel.propertyName || hotel.address || hotel.city || "").toLowerCase();
+          const searchText = (hotel.propertyName || hotel.address || hotel.city || hotel.area || "").toLowerCase();
           const filterWords = searchTerm.split(/[,\s]+/).map((word) => word.trim());
 
-          // Calculate relevance score
+          // Calculate text relevance score
           filterWords.forEach(word => {
             if (searchText.includes(word)) {
               relevanceScore += 5;
@@ -1891,17 +1947,22 @@ const SearchResults = () => {
         return {
           ...hotel,
           _relevanceScore: baseScore + relevanceScore,
+          _locationRelevanceScore: locationRelevanceScore, // NEW: Store location score separately
           _isExactMatch: isExactMatch,
-          _hasLocationMatch: relevanceScore > 0,
+          _hasLocationMatch: locationRelevanceScore > 0, // NEW: Check if has location match
           _isAvailable: isAvailable,
         };
       });
 
-      // Sorting logic - prioritize available hotels first, then exact matches
+      // NEW: Sorting logic with enhanced location priority
       filteredHotels.sort((a: any, b: any) => {
         // First, sort by availability (available hotels first)
         if (a._isAvailable && !b._isAvailable) return -1;
         if (b._isAvailable && !a._isAvailable) return 1;
+
+        // Then by location relevance score (highest first) - NEW PRIORITY
+        const locationScoreDiff = (b._locationRelevanceScore || 0) - (a._locationRelevanceScore || 0);
+        if (locationScoreDiff !== 0) return locationScoreDiff;
 
         // Then by exact match
         if (a._isExactMatch && !b._isExactMatch) return -1;
@@ -1911,7 +1972,7 @@ const SearchResults = () => {
         if (a._hasLocationMatch && !b._hasLocationMatch) return -1;
         if (b._hasLocationMatch && !a._hasLocationMatch) return 1;
 
-        // Then by relevance score (highest first)
+        // Then by total relevance score (highest first)
         const relevanceDiff = (b._relevanceScore || 0) - (a._relevanceScore || 0);
         if (relevanceDiff !== 0) return relevanceDiff;
 
@@ -1925,7 +1986,9 @@ const SearchResults = () => {
         } else if (sortByFilter === "popularity") {
           return (Number(b?.reviews) || 0) - (Number(a?.reviews) || 0);
         } else {
-          // Default: relevance score then price
+          // Default: location score then price
+          const locationDiff = (b._locationRelevanceScore || 0) - (a._locationRelevanceScore || 0);
+          if (locationDiff !== 0) return locationDiff;
           return getLowestRate(a) - getLowestRate(b);
         }
       });
@@ -1957,17 +2020,21 @@ const SearchResults = () => {
         };
       });
 
-      console.log(`📊 Final result: ${hotelsWithPrices.length} hotels`);
+      // NEW: Group hotels by location relevance for debugging
+      const highLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore >= 50);
+      const mediumLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore >= 20 && h._locationRelevanceScore < 50);
+      const lowLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore < 20 && h._locationRelevanceScore > 0);
+      const noLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore === 0);
 
-      // Detailed breakdown
-      const availableHotels = hotelsWithPrices.filter(h => h._isAvailable);
-      const soldOutHotels = hotelsWithPrices.filter(h => !h._isAvailable);
-      console.log(`✅ Available: ${availableHotels.length}`);
-      console.log(`❌ Sold out: ${soldOutHotels.length}`);
+      console.log('📍 Location Relevance Analysis:');
+      console.log(`  🔥 High relevance (>=50): ${highLocationRelevance.length} hotels`);
+      console.log(`  ⚡ Medium relevance (20-49): ${mediumLocationRelevance.length} hotels`);
+      console.log(`  🔍 Low relevance (1-19): ${lowLocationRelevance.length} hotels`);
+      console.log(`  ❌ No relevance: ${noLocationRelevance.length} hotels`);
 
-      // Log all final hotels
-      hotelsWithPrices.forEach((hotel, index) => {
-        console.log(`${index + 1}. ${hotel.propertyName} - ${hotel._isAvailable ? 'Available' : 'Sold Out'} - stayType: "${hotel?.rooms?.[0]?.stayType}"`);
+      // Log top hotels with location scores
+      hotelsWithPrices.slice(0, 5).forEach((hotel, index) => {
+        console.log(`${index + 1}. ${hotel.propertyName} - Location Score: ${hotel._locationRelevanceScore} - Address: ${hotel.address}`);
       });
 
       return hotelsWithPrices;
@@ -2258,6 +2325,11 @@ const SearchResults = () => {
             control={<BpRadio />}
             label="Customer Rating"
           />
+          <StyledFormControlLabel
+            value="locationRelevance"
+            control={<BpRadio />}
+            label="Near Search Location"
+          />
         </RadioGroup>
       </Box>
 
@@ -2289,6 +2361,7 @@ const SearchResults = () => {
       )}
     </Box>
   );
+
   const itemListSchema = {
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -2308,14 +2381,11 @@ const SearchResults = () => {
     }}>
       <Helmet>
         <title>Search Hotels in Bhubaneswar | Huts4u</title>
-
         <meta
           name="description"
           content="Search and book hourly hotels in Bhubaneswar quickly. Find hotels near you for short stays, business trips, or leisure visits."
         />
-
         <link rel="canonical" href="https://huts4u.com/search" />
-
         {/* WebPage Schema */}
         <script type="application/ld+json">
           {JSON.stringify({
@@ -2325,7 +2395,6 @@ const SearchResults = () => {
             "url": "https://huts4u.com/search"
           })}
         </script>
-
         {/* ItemList Schema (HOTEL LISTING) */}
         {paginatedData.length > 0 && (
           <script type="application/ld+json">
@@ -2333,7 +2402,6 @@ const SearchResults = () => {
           </script>
         )}
       </Helmet>
-
 
       <SearchSection />
 
@@ -2455,7 +2523,6 @@ const SearchResults = () => {
                 >
                   Filter & Sort
                 </CustomButton>
-
               </Box>
             )}
           </Box>
@@ -2481,7 +2548,7 @@ const SearchResults = () => {
                       isMobile={isMobile}
                       hotelRatings={hotelRatings}
                       inventoryData={roomInventory}
-                      hourlyClosures={hourlyClosures} // Pass closures to HotelCard
+                      hourlyClosures={hourlyClosures}
                     />
                   );
                 })}

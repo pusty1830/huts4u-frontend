@@ -13,6 +13,13 @@ import DirectionsWalk from '@mui/icons-material/DirectionsWalk';
 import Search from '@mui/icons-material/Search';
 import EventBusy from '@mui/icons-material/EventBusy';
 import Warning from '@mui/icons-material/Warning';
+import Restaurant from '@mui/icons-material/Restaurant';
+import RestaurantMenu from '@mui/icons-material/RestaurantMenu';
+import BreakfastDining from '@mui/icons-material/BreakfastDining';
+import LunchDining from '@mui/icons-material/LunchDining';
+import DinnerDining from '@mui/icons-material/DinnerDining';
+import Close from '@mui/icons-material/Close';
+import ArrowRightAlt from '@mui/icons-material/ArrowRightAlt';
 
 // MUI Components – import individually
 import Box from '@mui/material/Box';
@@ -57,6 +64,8 @@ import {
 } from '../components/style';
 import { CDN_URL, MAPBOX_ACCESS_TOKEN } from '../services/Secret';
 import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories, getHotelMeals } from '../services/services';
+import { ClearAll, Info, SquareFoot } from '@mui/icons-material';
+import { IconButton } from '@mui/material';
 
 /**
  * calculatePriceBreakdown (simplified - no discount)
@@ -284,14 +293,14 @@ const getInventoryPriceForDate = (room: any, inventoryData: any[], checkDate: st
 
 const HotelDetails: React.FC = () => {
   const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
-const CDN_BASE_URL = CDN_URL; 
+  const CDN_BASE_URL = CDN_URL;
 
-const toCdn = (url?: string) => {
-  if (!url) return "/default-hotel.jpg";
-  return url.includes(S3_BASE_URL)
-    ? url.replace(S3_BASE_URL, CDN_BASE_URL)
-    : url;
-};
+  const toCdn = (url?: string) => {
+    if (!url) return "/default-hotel.jpg";
+    return url.includes(S3_BASE_URL)
+      ? url.replace(S3_BASE_URL, CDN_BASE_URL)
+      : url;
+  };
 
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
@@ -334,19 +343,202 @@ const toCdn = (url?: string) => {
     minOvernightPrice: Infinity,
   });
 
-  useEffect(()=>{
+  // Meal plans state
+  const [mealPlans, setMealPlans] = useState<any[]>([]);
+  const [loadingMealPlans, setLoadingMealPlans] = useState<boolean>(true);
+  const [selectedMealPlan, setSelectedMealPlan] = useState<string>('Room Only'); // 'Room Only', 'EP', 'CP', 'AP'
 
-    const payLoad = {
-            data: { filter: "" },
-            page: 0,
-            pageSize: 1000,
-            order: [["createdAt", "ASC"]],
-          }
-      getHotelMeals(payLoad).then((res)=>{
-        console.log(res?.data?.data?.rows);
-        
-      })
-  },[])
+  // Fetch meal plans
+  const fetchMealPlans = async () => {
+    try {
+      setLoadingMealPlans(true);
+      const payload = {
+        data: { filter: "" },
+        page: 0,
+        pageSize: 1000,
+        order: [["createdAt", "ASC"]],
+      };
+
+      const response = await getHotelMeals(payload);
+      let mealData = response?.data?.data;
+
+      // Handle different API response structures
+      let mealArray: any[] = [];
+      if (mealData?.data && Array.isArray(mealData.data)) {
+        mealArray = mealData.data;
+      } else if (mealData?.rows && Array.isArray(mealData.rows)) {
+        mealArray = mealData.rows;
+      } else if (mealData?.result && Array.isArray(mealData.result)) {
+        mealArray = mealData.result;
+      } else if (Array.isArray(mealData)) {
+        mealArray = mealData;
+      }
+
+      // Filter meal plans for current hotel
+      const hotelMealPlans = mealArray.filter((meal: any) =>
+        meal.hotelId === hotel.id || meal.hotelId?.toString() === hotel.id?.toString()
+      );
+
+      setMealPlans(hotelMealPlans);
+    } catch (error) {
+      console.error("Error fetching meal plans:", error);
+      setMealPlans([]);
+    } finally {
+      setLoadingMealPlans(false);
+    }
+  };
+
+  // Get meal plans for a specific room
+  const getMealPlansForRoom = (roomId: string) => {
+    return mealPlans.filter(meal => meal.roomId === roomId || meal.roomId?.toString() === roomId?.toString());
+  };
+
+  // Update the getAvailableMealPlansForRoom function
+  const getAvailableMealPlansForRoom = (room: any) => {
+    const roomMealPlans = getMealPlansForRoom(room.id);
+    const availablePlans = ['Room Only'];
+
+    roomMealPlans.forEach(meal => {
+      // Try different field names
+      const mealType = meal.mealType || meal.mealPlan || meal.meal_type || meal.plan || meal.mealName;
+      if (mealType && !availablePlans.includes(mealType)) {
+        availablePlans.push(mealType);
+      }
+    });
+
+    return availablePlans;
+  };
+
+  // Update the calculateMealPlanPrice function to handle string prices
+  const calculateMealPlanPrice = (room: any, mealPlanType: string) => {
+    if (mealPlanType === 'Room Only') {
+      return 0; // No additional cost for room only
+    }
+
+    const roomMealPlans = getMealPlansForRoom(room.id);
+
+    // Try to find meal plan by different field names
+    const mealPlan = roomMealPlans.find(meal => {
+      const mealType = meal.mealType || meal.mealPlan || meal.meal_type || meal.plan || meal.mealName;
+      return mealType === mealPlanType;
+    });
+
+    if (!mealPlan) {
+      console.warn(`Meal plan ${mealPlanType} not found for room ${room.id}`);
+      return 0;
+    }
+
+    // Parse price string to number
+    const mealPriceStr = mealPlan.price || mealPlan.rate || mealPlan.cost || mealPlan.mealPrice || '0';
+    const mealPrice = parseFloat(mealPriceStr) || 0;
+
+    const standardOccupancy = room.standardRoomOccupancy || 1;
+
+    // For overnight bookings
+    if (bookingType !== "hourly") {
+      return mealPrice * standardOccupancy * nights;
+    } else {
+      // For hourly bookings, apply proportional meal cost
+      const hourlyMultiplier = selectedSlot.slot === "rateFor12Hour" ? 1 :
+        selectedSlot.slot === "rateFor6Hour" ? 0.5 : 0.25;
+      return mealPrice * standardOccupancy * hourlyMultiplier;
+    }
+  };
+
+  // Function to get room price (without meals)
+  const getRoomPriceOnly = (room: any, slot: string) => {
+    if (!room || !slot) return 0;
+    return getPriceForSlot(room, slot);
+  };
+
+  // Add a debug function to check meal plan data
+  const debugMealPlans = () => {
+    console.log('=== MEAL PLANS DEBUG ===');
+    console.log('All meal plans:', mealPlans);
+    console.log('Hotel ID:', hotel.id);
+
+    hotel.rooms.forEach((room: any) => {
+      const roomMealPlans = getMealPlansForRoom(room.id);
+      console.log(`Room ${room.id} (${room.roomCategory}) meal plans:`, roomMealPlans);
+
+      roomMealPlans.forEach((meal: any, index: number) => {
+        console.log(`  Meal ${index + 1}:`, {
+          id: meal.id,
+          hotelId: meal.hotelId,
+          roomId: meal.roomId,
+          mealType: meal.mealType,
+          mealPlan: meal.mealPlan,
+          meal_type: meal.meal_type,
+          plan: meal.plan,
+          price: meal.price,
+          rate: meal.rate,
+          cost: meal.cost,
+          allFields: Object.keys(meal)
+        });
+      });
+    });
+    console.log('=== END DEBUG ===');
+  };
+
+  // Add a useEffect to debug when meal plans load
+  useEffect(() => {
+    if (!loadingMealPlans && mealPlans.length > 0) {
+      debugMealPlans();
+    }
+  }, [loadingMealPlans, mealPlans]);
+
+  // Get meal plan icon
+  const getMealPlanIcon = (mealPlanType: string) => {
+    const type = mealPlanType?.toUpperCase();
+    switch (type) {
+      case 'EP':
+      case 'EUROPEAN PLAN':
+        return <BreakfastDining />;
+      case 'CP':
+      case 'CONTINENTAL PLAN':
+        return <RestaurantMenu />;
+      case 'AP':
+      case 'AMERICAN PLAN':
+      case 'FULL BOARD':
+        return <Restaurant />;
+      case 'MAP':
+      case 'MODIFIED AMERICAN PLAN':
+        return <RestaurantMenu />;
+      case 'ROOM ONLY':
+        return null;
+      default:
+        // Check if it contains breakfast/lunch/dinner keywords
+        if (type?.includes('BREAKFAST')) return <BreakfastDining />;
+        if (type?.includes('LUNCH')) return <LunchDining />;
+        if (type?.includes('DINNER')) return <DinnerDining />;
+        if (type?.includes('MEAL')) return <Restaurant />;
+        return null;
+    }
+  };
+
+  const getMealPlanDescription = (mealPlanType: string) => {
+    const type = mealPlanType?.toUpperCase();
+    switch (type) {
+      case 'EP':
+      case 'EUROPEAN PLAN':
+        return 'Room + Breakfast';
+      case 'CP':
+      case 'CONTINENTAL PLAN':
+        return 'Room + Breakfast + Lunch/Dinner';
+      case 'AP':
+      case 'AMERICAN PLAN':
+      case 'FULL BOARD':
+        return 'All Meals Included';
+      case 'MAP':
+      case 'MODIFIED AMERICAN PLAN':
+        return 'Room + Breakfast + Dinner';
+      case 'ROOM ONLY':
+        return 'Room Only';
+      default:
+        return mealPlanType || 'Room Only';
+    }
+  };
+
   // Fetch inventory for each room for the specific dates
   const fetchInventoryForRooms = async () => {
     try {
@@ -489,6 +681,13 @@ const toCdn = (url?: string) => {
     );
   };
 
+  // Get total price including selected meal plan
+  const getTotalPriceWithMeals = (room: any, slot: string, mealPlanType: string) => {
+    const roomPrice = getPriceForSlot(room, slot);
+    const mealPrice = calculateMealPlanPrice(room, mealPlanType);
+    return roomPrice + mealPrice;
+  };
+
   // Get inventory status for a room
   const getRoomInventoryStatus = (room: any) => {
     // First check room status from database
@@ -603,7 +802,7 @@ const toCdn = (url?: string) => {
     }
   };
 
-  // Fetch ratings and inventory on component mount
+  // Fetch ratings, inventory, and meal plans on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -632,6 +831,7 @@ const toCdn = (url?: string) => {
     if (hotel.id) {
       fetchData();
       fetchInventoryForRooms();
+      fetchMealPlans();
     } else {
       // Use hotel data if ratings fetch fails
       setAverageRating(hotel?.ratings?.rating || 0);
@@ -814,6 +1014,9 @@ const toCdn = (url?: string) => {
     slot: bookingType === "hourly" ? "rateFor3Hour" : "rateFor1Night",
   });
 
+  // Meal plan filter state
+  const [mealPlanFilter, setMealPlanFilter] = useState<string>('');
+
   // --- New State for Mapbox ---
   const [mapViewport, setMapViewport] = useState({
     latitude: 20.5937, // Default to India center
@@ -899,37 +1102,6 @@ const toCdn = (url?: string) => {
 
   const navigate = useNavigate();
 
-  // Per-unit price breakdown (no coupon logic)
-  const unitBasePrice =
-    selectedSlot.roomId && selectedSlot.slot && selectedRoom
-      ? getPriceForSlot(selectedRoom, selectedSlot.slot)
-      : 0;
-  const unitBreakdown = calculatePriceBreakdown(unitBasePrice);
-
-  // multipliers
-  const roomsMultiplier = roomsCountParam;
-  const perStayMultiplier =
-    (bookingType || "").toLowerCase() === "hourly" ? 1 : nights;
-  const totalMultiplier = roomsMultiplier * perStayMultiplier;
-
-  // totals (apply multiplier)
-  const totalBreakdown = {
-    basePrice: unitBreakdown.basePrice * totalMultiplier,
-    platformFee: unitBreakdown.platformFee * totalMultiplier,
-    gstOnBase: unitBreakdown.gstOnBase * totalMultiplier,
-    gstOnPlatform: unitBreakdown.gstOnPlatform * totalMultiplier,
-    gstTotal: unitBreakdown.gstTotal * totalMultiplier,
-    gatewayFee: unitBreakdown.gatewayFee * totalMultiplier,
-    finalPrice: unitBreakdown.finalPrice * totalMultiplier,
-  };
-
-  // display values (TOTALS)
-  const displayBase = totalBreakdown.basePrice;
-  const displayBasePlus700 = displayBase + 700;
-  const displayCombinedBasePlatform =
-    totalBreakdown.basePrice + totalBreakdown.platformFee;
-  const displayGstTotal = totalBreakdown.gstTotal;
-
   // Function to geocode address using Mapbox
   const geocodeAddress = useCallback(async (address: string) => {
     try {
@@ -1004,57 +1176,166 @@ const toCdn = (url?: string) => {
       return minPrice > 0 ? `Similar hotels in Bhubaneswar offer hourly stays starting from ₹${minPrice} for 3 hours` : "Similar hotels in Bhubaneswar offer hourly stays";
     }
   };
+
+  // Get filtered rooms based on meal plan filter
+  const getFilteredRooms = () => {
+    if (!mealPlanFilter || mealPlanFilter === 'All Meal Plans') {
+      return availableRooms;
+    }
+
+    return availableRooms.filter((room: any) => {
+      const roomMealPlans = getAvailableMealPlansForRoom(room);
+      return roomMealPlans.includes(mealPlanFilter);
+    });
+  };
+
+  // Get count of filtered rooms
+  const getFilteredRoomsCount = () => {
+    return getFilteredRooms().length;
+  };
+
+  // Per-unit price breakdown (no coupon logic)
+  const unitBasePrice =
+    selectedSlot.roomId && selectedSlot.slot && selectedRoom
+      ? getTotalPriceWithMeals(selectedRoom, selectedSlot.slot, selectedMealPlan)
+      : 0;
+  const unitBreakdown = calculatePriceBreakdown(unitBasePrice);
+
+  // Get room-only price for breakdown display
+  const unitRoomOnlyPrice = selectedSlot.roomId && selectedSlot.slot && selectedRoom
+    ? getRoomPriceOnly(selectedRoom, selectedSlot.slot)
+    : 0;
+  const unitRoomOnlyBreakdown = calculatePriceBreakdown(unitRoomOnlyPrice);
+
+  // Get meal price separately
+  const unitMealPrice = selectedRoom ? calculateMealPlanPrice(selectedRoom, selectedMealPlan) : 0;
+
+  // multipliers
+  const roomsMultiplier = roomsCountParam;
+  const perStayMultiplier =
+    (bookingType || "").toLowerCase() === "hourly" ? 1 : nights;
+  const totalMultiplier = roomsMultiplier * perStayMultiplier;
+
+  // totals (apply multiplier)
+  const totalBreakdown = {
+    basePrice: unitBreakdown.basePrice * totalMultiplier,
+    platformFee: unitBreakdown.platformFee * totalMultiplier,
+    gstOnBase: unitBreakdown.gstOnBase * totalMultiplier,
+    gstOnPlatform: unitBreakdown.gstOnPlatform * totalMultiplier,
+    gstTotal: unitBreakdown.gstTotal * totalMultiplier,
+    gatewayFee: unitBreakdown.gatewayFee * totalMultiplier,
+    finalPrice: unitBreakdown.finalPrice * totalMultiplier,
+  };
+
+  // Room-only totals for comparison
+  const totalRoomOnlyBasePrice = unitRoomOnlyBreakdown.basePrice * totalMultiplier;
+  const totalRoomOnlyPlatformFee = unitRoomOnlyBreakdown.platformFee * totalMultiplier;
+  const totalRoomOnlyCombined = totalRoomOnlyBasePrice + totalRoomOnlyPlatformFee;
+
+  // display values (TOTALS)
+  const displayBase = totalBreakdown.basePrice;
+  const displayBasePlus700 = displayBase + 700;
+  const displayCombinedBasePlatform =
+    totalBreakdown.basePrice + totalBreakdown.platformFee;
+  const displayGstTotal = totalBreakdown.gstTotal;
+
   const hotelSchema = {
-  "@context": "https://schema.org",
-  "@type": "Hotel",
-  "@id": `https://huts4u.com/hotel/${hotel.id}`,
-  "name": hotel.propertyName,
-  "url": `https://huts4u.com/hotel/${hotel.id}`,
-  "image": (hotel.propertyImages || []).map((img: string) => toCdn(img)),
-  "description": hotel.propertyDesc,
-  "address": {
-    "@type": "PostalAddress",
-    "streetAddress": hotel.address,
-    "addressLocality": "Bhubaneswar",
-    "addressRegion": "Odisha",
-    "addressCountry": "IN"
-  },
-  "geo": mapViewport?.latitude && mapViewport?.longitude
-    ? {
+    "@context": "https://schema.org",
+    "@type": "Hotel",
+    "@id": `https://huts4u.com/hotel/${hotel.id}`,
+    "name": hotel.propertyName,
+    "url": `https://huts4u.com/hotel/${hotel.id}`,
+    "image": (hotel.propertyImages || []).map((img: string) => toCdn(img)),
+    "description": hotel.propertyDesc,
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": hotel.address,
+      "addressLocality": "Bhubaneswar",
+      "addressRegion": "Odisha",
+      "addressCountry": "IN"
+    },
+    "geo": mapViewport?.latitude && mapViewport?.longitude
+      ? {
         "@type": "GeoCoordinates",
         "latitude": mapViewport.latitude,
         "longitude": mapViewport.longitude
       }
-    : undefined,
-  "amenityFeature": Array.from(
-    new Set(
-      hotel?.rooms?.flatMap((room: any) => room.amenities || []) || []
-    )
-  ).map((amenity: any) => ({
-    "@type": "LocationFeatureSpecification",
-    "name": amenity,
-    "value": true
-  })),
-  ...(reviewCount > 0 && {
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": averageRating,
-      "reviewCount": reviewCount,
-      "bestRating": "5",
-      "worstRating": "1"
+      : undefined,
+    "amenityFeature": Array.from(
+      new Set(
+        hotel?.rooms?.flatMap((room: any) => room.amenities || []) || []
+      )
+    ).map((amenity: any) => ({
+      "@type": "LocationFeatureSpecification",
+      "name": amenity,
+      "value": true
+    })),
+    ...(reviewCount > 0 && {
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": averageRating,
+        "reviewCount": reviewCount,
+        "bestRating": "5",
+        "worstRating": "1"
+      }
+    }),
+    "makesOffer": {
+      "@type": "Offer",
+      "priceCurrency": "INR",
+      "price": Math.round(displayCombinedBasePlatform),
+      "availability": availableRooms.length > 0
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
+      "url": window.location.href
     }
-  }),
-  "makesOffer": {
-    "@type": "Offer",
-    "priceCurrency": "INR",
-    "price": Math.round(displayCombinedBasePlatform),
-    "availability": availableRooms.length > 0
-      ? "https://schema.org/InStock"
-      : "https://schema.org/OutOfStock",
-    "url": window.location.href
-  }
-};
+  };
 
+  // Function to handle Book Now click
+  const handleBookNow = () => {
+    if (availableRooms.length === 0) return;
+
+    if (selectedRoom && selectedSlot.slot) {
+      const isAvailable = isSlotAvailable(selectedRoom, selectedSlot.slot);
+      if (!isAvailable) {
+        alert('This room is no longer available. Please select another room or slot.');
+        return;
+      }
+    }
+
+    const queryString = new URLSearchParams(queryParams).toString();
+    const mealPrice = calculateMealPlanPrice(selectedRoom, selectedMealPlan);
+    const roomPrice = selectedSlot.slot ? getPriceForSlot(selectedRoom, selectedSlot.slot) : 0;
+    const totalBasePrice = roomPrice + mealPrice;
+
+    navigate(
+      `/booking-summary/${hotel.id}${queryString ? `?${queryString}` : ""}`,
+      {
+        state: {
+          hotelData: hotel,
+          selectedRoom: selectedRoom,
+          selectedSlot: selectedSlot,
+          selectedMealPlan: selectedMealPlan,
+          pricingDetails: {
+            rooms: roomsCountParam,
+            nights: perStayMultiplier,
+            basePrice: totalBasePrice * totalMultiplier,
+            platformFee: totalBreakdown.platformFee,
+            gstOnBase: totalBreakdown.gstOnBase,
+            gstOnPlatform: totalBreakdown.gstOnPlatform,
+            gstTotal: totalBreakdown.gstTotal,
+            gatewayFee: totalBreakdown.gatewayFee,
+            totalPrice: totalBreakdown.finalPrice,
+            mealPlan: selectedMealPlan,
+            mealPlanDescription: getMealPlanDescription(selectedMealPlan),
+            mealPlanPrice: mealPrice * totalMultiplier,
+            roomPrice: roomPrice * totalMultiplier,
+            addOn: selectedMealPlan !== 'Room Only' ? `${selectedMealPlan} (Meal Plan)` : 'No Add-ons',
+          },
+          inventoryData: inventoryData[selectedRoom?.id] || [],
+        },
+      }
+    );
+  };
 
   return (
     <Box
@@ -1066,36 +1347,35 @@ const toCdn = (url?: string) => {
         position: "relative",
       }}
     >
-       <Helmet>
-    <title>{hotel.propertyName} in Bhubaneswar {bookingType === "hourly" ? "Hourly" : "Overnight"} Stay in Bhubaneswar by Huts4U</title>
-    <meta 
-      name="description" 
-      content={`Book ${hotel.propertyName} in Bhubaneswar for safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays with Huts4U. Perfect for short breaks, layovers, and flexible check-ins.`}
-    />
-    {/* Open Graph tags for social media */}
-    <meta property="og:title" content={`${hotel.propertyName} in Bhubaneswar ${bookingType === "hourly" ? "Hourly" : "Overnight"} Stay by Huts4U`} />
-    <meta property="og:description" content={`Book ${hotel.propertyName} for safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays.`} />
-    {hotel.propertyImages && hotel.propertyImages[0] && (
-      <meta property="og:image" content={toCdn(hotel.propertyImages[0])} />
-    )}
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={window.location.href} />
-    
-    {/* Twitter Card tags */}
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={`${hotel.propertyName} - ${bookingType === "hourly" ? "Hourly" : "Overnight"} Stay in Bhubaneswar`} />
-    <meta name="twitter:description" content={`Book safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays at ${hotel.propertyName} with Huts4U.`} />
-    {hotel.propertyImages && hotel.propertyImages[0] && (
-      <meta name="twitter:image" content={toCdn(hotel.propertyImages[0])} />
-    )}
-    
-    {/* Additional meta tags */}
-    <meta name="keywords" content={`${hotel.propertyName}, Bhubaneswar hotel, ${bookingType === "hourly" ? "hourly hotel" : "overnight stay"}, short stay, affordable hotel, Huts4U`} />
-    <script type="application/ld+json">
-  {JSON.stringify(hotelSchema)}
-</script>
-  </Helmet>
+      <Helmet>
+        <title>{hotel.propertyName} in Bhubaneswar {bookingType === "hourly" ? "Hourly" : "Overnight"} Stay in Bhubaneswar by Huts4U</title>
+        <meta
+          name="description"
+          content={`Book ${hotel.propertyName} in Bhubaneswar for safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays with Huts4U. Perfect for short breaks, layovers, and flexible check-ins.`}
+        />
+        {/* Open Graph tags for social media */}
+        <meta property="og:title" content={`${hotel.propertyName} in Bhubaneswar ${bookingType === "hourly" ? "Hourly" : "Overnight"} Stay by Huts4U`} />
+        <meta property="og:description" content={`Book ${hotel.propertyName} for safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays.`} />
+        {hotel.propertyImages && hotel.propertyImages[0] && (
+          <meta property="og:image" content={toCdn(hotel.propertyImages[0])} />
+        )}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={window.location.href} />
 
+        {/* Twitter Card tags */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={`${hotel.propertyName} - ${bookingType === "hourly" ? "Hourly" : "Overnight"} Stay in Bhubaneswar`} />
+        <meta name="twitter:description" content={`Book safe and affordable ${bookingType === "hourly" ? "hourly" : "overnight"} stays at ${hotel.propertyName} with Huts4U.`} />
+        {hotel.propertyImages && hotel.propertyImages[0] && (
+          <meta name="twitter:image" content={toCdn(hotel.propertyImages[0])} />
+        )}
+
+        {/* Additional meta tags */}
+        <meta name="keywords" content={`${hotel.propertyName}, Bhubaneswar hotel, ${bookingType === "hourly" ? "hourly hotel" : "overnight stay"}, short stay, affordable hotel, Huts4U`} />
+        <script type="application/ld+json">
+          {JSON.stringify(hotelSchema)}
+        </script>
+      </Helmet>
 
       <Box
         sx={{
@@ -1335,8 +1615,6 @@ const toCdn = (url?: string) => {
               Highlights
             </Typography>
 
-
-
             <Box
               sx={{
                 display: "flex",
@@ -1392,483 +1670,6 @@ const toCdn = (url?: string) => {
                 ))}
             </Box>
           </Box>
-
-          {/* RIGHT STICKY BOOKING SUMMARY BOX */}
-          <Box
-            id="boxC"
-            sx={{
-              ...BoxStyle,
-              minWidth: "350px",
-              maxWidth: "350px",
-              maxHeight: "none",
-              pb: 3,
-              position: isSticky ? "fixed" : "absolute",
-              bottom: isSticky ? "10px" : "-380px",
-              right: isSticky ? "72px" : "24px",
-              zIndex: 100,
-              m: 0,
-              background: color.thirdColor,
-              transition: "bottom 0.3s ease",
-              overflow: "visible",
-              overflowY: "visible",
-              ...(isSticky &&
-                typeof window !== "undefined" &&
-                window.scrollY >= stopPosition
-                ? { position: "absolute", bottom: "85px" }
-                : {}),
-
-              "@media (max-width: 900px)": {
-                position: "fixed",
-                bottom: 0,
-                left: 0,
-                right: 0,
-                minWidth: "unset",
-                maxWidth: "100%",
-                borderRadius: "10px 10px 0 0",
-                p: 2,
-              },
-            }}
-          >
-            {isMobile && (
-              <Box
-                onClick={() => setShowDetails(!showDetails)}
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  p: 1,
-                  m: -2,
-                  mb: showDetails ? -4 : 0,
-                  background: color.background,
-                  color: color.thirdColor,
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontWeight: 600,
-                    fontSize: "18px",
-                  }}
-                >
-                  {showDetails ? "Hide Details" : "Show Details"}
-                </Typography>
-                {!showDetails ? <ExpandLess /> : <ExpandMore />}
-              </Box>
-            )}
-
-            {(showDetails || !isMobile) && (
-              <>
-                {!isMobile && (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "50px",
-                      background: color.background,
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <Typography
-                      fontWeight={600}
-                      color={color.thirdColor}
-                      fontSize={"20px"}
-                    >
-                      Get upto 15% discount on all bookings
-                    </Typography>
-                  </Box>
-                )}
-
-                <Typography
-                  sx={{
-                    fontFamily: "CustomFontB",
-                    fontSize: "16px",
-                    color: color.paperColor,
-                    mt: "50px",
-                  }}
-                >
-                  Your Booking Summary
-                </Typography>
-
-                {/* Dates */}
-                <Box
-                  sx={{
-                    mt: 2,
-                    border: "solid 1px",
-                    borderColor: color.forthColor,
-                    borderRadius: "12px",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    textAlign: "center",
-                    boxShadow:
-                      "0px -10px 20px rgba(0, 0, 0, 0.12) inset",
-                  }}
-                >
-                  <Box
-                    p={2}
-                    sx={{
-                      width: "50%",
-                    }}
-                  >
-                    <Typography fontSize={"14px"} color={color.forthColor}>
-                      Check In Date
-                    </Typography>
-
-                    <Typography fontWeight={600}>
-                      {checkinDate
-                        ? dayjs(checkinDate).format("DD MMM YYYY")
-                        : ""}
-                    </Typography>
-                  </Box>
-                  <Divider
-                    sx={{
-                      opacity: 1,
-                      borderWidth: "1.5px",
-                      borderColor: color.forthColor,
-                    }}
-                    orientation="vertical"
-                    flexItem
-                  />
-                  <Box
-                    p={2}
-                    sx={{
-                      width: "50%",
-                    }}
-                  >
-                    {bookingType === "hourly" ? (
-                      <>
-                        <Typography
-                          fontSize={"14px"}
-                          color={color.forthColor}
-                        >
-                          Check In Time
-                        </Typography>
-
-                        <Typography fontWeight={600}>
-                          {checkinTime
-                            ? dayjs(checkinTime, "HH:mm").format("hh:mm A")
-                            : ""}
-                        </Typography>
-                      </>
-                    ) : (
-                      <>
-                        <Typography
-                          fontSize={"14px"}
-                          color={color.forthColor}
-                        >
-                          Check Out Date
-                        </Typography>
-
-                        <Typography fontWeight={600}>
-                          {checkOutDate
-                            ? dayjs(checkOutDate).format("DD MMM YYYY")
-                            : ""}
-                        </Typography>
-                      </>
-                    )}
-                  </Box>
-                </Box>
-
-                {/* Rooms & Guests */}
-                <Box
-                  mt={2}
-                  p={2}
-                  sx={{
-                    border: "solid 1px",
-                    borderColor: color.forthColor,
-                    borderRadius: "12px",
-                    px: 4,
-                    textAlign: "left",
-                    boxShadow:
-                      "0px -10px 20px rgba(0, 0, 0, 0.12) inset",
-                  }}
-                >
-                  <Typography fontSize={"14px"} color={color.forthColor}>
-                    Rooms & Guest Details
-                  </Typography>
-
-                  <Typography fontWeight={600}>
-                    {roomsCountParam} Room
-                    {roomsCountParam > 1 ? "s" : ""}, {adults} Adults,{" "}
-                    {children} Children
-                  </Typography>
-                </Box>
-
-                {/* Selected Room type (summary box) */}
-                <Box
-                  mt={2}
-                  p={2}
-                  sx={{
-                    border: "solid 1px",
-                    borderColor: color.forthColor,
-                    borderRadius: "12px",
-                    px: 4,
-                    textAlign: "left",
-                    boxShadow:
-                      "0px -10px 20px rgba(0, 0, 0, 0.12) inset",
-                    pb: 3,
-                    fontFamily: "CustomFontB",
-                  }}
-                >
-                  <Typography
-                    fontSize={"14px"}
-                    color={color.forthColor}
-                    mb={1}
-                  >
-                    Selected Room Type
-                  </Typography>
-                  <FormControl component="fieldset">
-                    <RadioGroup
-                      value={selectedRoom?.id ?? ""}
-                      onChange={(e) => {
-                        const room = availableRooms.find(
-                          (r: any) => r.id === Number(e.target.value)
-                        );
-                        if (room) {
-                          setSelectedRoom(room);
-                          setSelectedSlot({
-                            roomId: room.id,
-                            slot:
-                              (bookingType || "").toLowerCase() === "hourly"
-                                ? "rateFor3Hour"
-                                : "rateFor1Night",
-                          });
-                        }
-                      }}
-                    >
-                      {selectedRoom && (
-                        <StyledLabel
-                          key={selectedRoom.id}
-                          value={selectedRoom.id}
-                          checked
-                          control={<CustomRadio />}
-                          label={
-                            <Typography
-                              sx={{ fontWeight: "bold" }}
-                            >
-                              {selectedRoom?.roomCategory}
-                            </Typography>
-                          }
-                        />
-                      )}
-                    </RadioGroup>
-                  </FormControl>
-                </Box>
-
-                {/* Hourly slot selector (3hr / 6hr / 12hr) with price + taxes & fees */}
-                {(bookingType || "").toLowerCase() === "hourly" &&
-                  selectedRoom && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        justifyContent: "space-around",
-                        gap: "6px",
-                        marginTop: "20px",
-                      }}
-                    >
-                      {["rateFor3Hour", "rateFor6Hour", "rateFor12Hour"]
-                        .filter(
-                          (slotKey) => {
-                            const price = getPriceForSlot(selectedRoom, slotKey);
-                            return price > 0 && isSlotAvailable(selectedRoom, slotKey);
-                          }
-                        )
-                        .map((slotKey) => {
-                          const slotLabel =
-                            slotKey
-                              .replace("rateFor", "")
-                              .replace("Hour", "") + "hrs";
-                          const price = getPriceForSlot(selectedRoom, slotKey);
-                          const breakdown = calculatePriceBreakdown(price);
-                          const {
-                            basePrice,
-                            platformFee,
-                            gstTotal,
-                          } = breakdown as any;
-
-                          // per unit (per room per slot) display
-                          const perUnitMain = basePrice + platformFee;
-                          const perUnitTaxes = gstTotal;
-
-                          return (
-                            <StyledToggleButton
-                              key={slotKey}
-                              value={slotLabel}
-                              selected={
-                                selectedSlot.roomId === selectedRoom.id &&
-                                selectedSlot.slot === slotKey
-                              }
-                              onClick={() =>
-                                handleSlotSelection(selectedRoom.id, slotKey)
-                              }
-                              style={{ borderColor: color.forthColor }}
-                            >
-                              <Typography
-                                px={1}
-                                py={0.5}
-                                style={{
-                                  fontSize: "14px",
-                                  fontWeight: 600,
-                                  lineHeight: 1.4,
-                                }}
-                              >
-                                ₹ {Math.round(perUnitMain)}
-                                <br />
-                                <span
-                                  style={{ fontSize: "10px" }}
-                                >
-                                  {slotLabel} • + ₹
-                                  {Math.round(
-                                    perUnitTaxes
-                                  )}{" "}
-                                  taxes & fees
-                                </span>
-                              </Typography>
-                            </StyledToggleButton>
-                          );
-                        })}
-                    </div>
-                  )}
-
-                <Divider
-                  sx={{ mt: 3, mb: 1, borderColor: color.forthColor }}
-                />
-              </>
-            )}
-
-            {/* PRICE SUMMARY AT BOTTOM */}
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-                mt: 0,
-                px: { xs: 1, md: 3 },
-              }}
-            >
-              {/* 1) TOTAL PRICE (top) */}
-              <Box>
-                <Typography
-                  fontSize={"14px"}
-                  color={color.forthColor}
-                  mt={1}
-                >
-                  Total Price
-                  {bookingType !== "hourly" && totalMultiplier > 1
-                    ? ` (for ${roomsCountParam} room${roomsCountParam > 1 ? "s" : ""
-                    } • ${perStayMultiplier} night${perStayMultiplier > 1 ? "s" : ""
-                    })`
-                    : ` (for ${roomsCountParam} room${roomsCountParam > 1 ? "s" : ""
-                    })`}
-                  :
-                </Typography>
-
-                {/* Top struck-through bigger: base + 700 */}
-                <Typography
-                  sx={{
-                    fontSize: "18px",
-                    color: color.paperColor,
-                    textDecoration: "line-through",
-                    fontWeight: 600,
-                    mt: 0.5,
-                  }}
-                >
-                  {displayBase > 0
-                    ? `₹ ${displayBasePlus700.toFixed(0)}`
-                    : "---"}
-                </Typography>
-
-                {/* Main bold price = base + platform */}
-                <Typography
-                  fontSize={"24px"}
-                  color={color.firstColor}
-                  fontWeight={"bold"}
-                  mt={0.5}
-                >
-                  {displayCombinedBasePlatform > 0
-                    ? `₹${displayCombinedBasePlatform.toFixed(0)}`
-                    : "—"}
-                </Typography>
-
-                {/* GST & Fees combined */}
-                <Typography
-                  fontSize={"14px"}
-                  color={color.forthColor}
-                  mt={0.5}
-                >
-                  {displayGstTotal > 0
-                    ? `+ ₹${displayGstTotal.toFixed(
-                      0
-                    )} taxes & fees`
-                    : ""}
-                </Typography>
-              </Box>
-
-              {/* 3) BOOK NOW (last, full width) */}
-              <Box>
-                <CustomButton
-                  customStyles={{
-                    width: "100%",
-                    height: "52px",
-                    fontSize: "16px",
-                    marginTop: "4px",
-                    // Disable if no available rooms or selected room is unavailable
-                    opacity: availableRooms.length === 0 ? 0.5 : 1,
-                    cursor: availableRooms.length === 0 ? 'not-allowed' : 'pointer',
-                  }}
-                  onClick={() => {
-                    // Prevent booking if no available rooms
-                    if (availableRooms.length === 0) return;
-
-                    // Check if selected room and slot are still available
-                    if (selectedRoom && selectedSlot.slot) {
-                      const isAvailable = isSlotAvailable(selectedRoom, selectedSlot.slot);
-                      if (!isAvailable) {
-                        alert('This room is no longer available. Please select another room or slot.');
-                        return;
-                      }
-                    }
-
-                    const queryString =
-                      new URLSearchParams(queryParams).toString();
-
-                    navigate(
-                      `/booking-summary/${hotel.id}${queryString ? `?${queryString}` : ""
-                      }`,
-                      {
-                        state: {
-                          hotelData: hotel,
-                          selectedRoom: selectedRoom,
-                          selectedSlot: selectedSlot,
-                          pricingDetails: {
-                            rooms: roomsCountParam,
-                            nights: perStayMultiplier,
-                            basePrice: totalBreakdown.basePrice,
-                            platformFee: totalBreakdown.platformFee,
-                            gstOnBase: totalBreakdown.gstOnBase,
-                            gstOnPlatform:
-                              totalBreakdown.gstOnPlatform,
-                            gstTotal: totalBreakdown.gstTotal,
-                            gatewayFee: totalBreakdown.gatewayFee,
-                            totalPrice: totalBreakdown.finalPrice,
-                          },
-                          inventoryData: inventoryData[selectedRoom?.id] || [],
-                        },
-                      }
-                    );
-                  }}
-                  variant="contained"
-                >
-                  {availableRooms.length === 0 ? 'No Rooms Available' : 'Book Now'}
-                </CustomButton>
-              </Box>
-            </Box>
-          </Box>
         </Box>
 
         {/* LOWER TABS SECTION */}
@@ -1914,592 +1715,1058 @@ const toCdn = (url?: string) => {
           </Tabs>
 
           <TabPanel value={value} index={0}>
-            {/* Loading inventory indicator */}
-            {loadingInventory && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                <CircularProgress size={20} />
-                <Typography variant="body2" color="textSecondary">
-                  Checking room availability...
-                </Typography>
-              </Box>
-            )}
+            {/* Main container for MMT-like layout */}
+            <Box sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column-reverse', lg: 'row' }, // Reverse on mobile to show booking summary first
+              gap: { xs: 2, lg: 3 },
+              mt: { xs: 1, lg: 2 }
+            }}>
 
-            {/* Alert if all rooms are unavailable */}
-            {availableRooms.length === 0 && !loadingInventory && (
-              <Alert
-                severity="error"
-                sx={{ mb: 3 }}
-                icon={<Block />}
-              >
-                <AlertTitle>All Rooms Sold Out</AlertTitle>
-                All rooms in this hotel are currently unavailable for your selected dates. Please try different dates or explore other hotels.
-              </Alert>
-            )}
+              {/* LEFT SIDE - Rooms list (60% width) */}
+              <Box sx={{
+                flex: { xs: 1, lg: 0.6 },
+                overflow: 'visible',
+                order: { xs: 2, lg: 1 } // Show second on mobile, first on desktop
+              }}>
+                {/* Loading inventory indicator - Mobile optimized */}
+                {loadingInventory && (
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    mb: { xs: 2, lg: 3 },
+                    p: { xs: 1.5, lg: 2 }
+                  }}>
+                    <CircularProgress size={18} />
+                    <Typography variant="body2" color="textSecondary" fontSize={{ xs: '12px', lg: '14px' }}>
+                      Checking room availability...
+                    </Typography>
+                  </Box>
+                )}
 
-            {/* Alert if some rooms are available but there are also unavailable ones */}
-            {unavailableRooms.length > 0 && availableRooms.length > 0 && !loadingInventory && (
-              <Alert
-                severity="info"
-                sx={{ mb: 3 }}
-              >
-                <AlertTitle>Some Rooms Unavailable</AlertTitle>
-                {unavailableRooms.length} room{unavailableRooms.length > 1 ? 's are' : ' is'} currently unavailable for your selected dates. Showing {availableRooms.length} available room{availableRooms.length > 1 ? 's' : ''}.
-              </Alert>
-            )}
+                {/* MEAL PLAN FILTER - Mobile optimized */}
+                <Box sx={{
+                  mb: { xs: 2, lg: 3 },
+                  p: { xs: 1.5, lg: 2 },
+                  bgcolor: 'background.paper',
+                  borderRadius: { xs: 1, lg: 2 },
+                  boxShadow: { xs: '0 1px 2px rgba(0,0,0,0.08)', lg: '0 1px 4px rgba(0,0,0,0.1)' },
+                  border: '1px solid #e0e0e0'
+                }}>
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: { xs: 1, lg: 2 },
+                    mb: { xs: 0.5, lg: 1 }
+                  }}>
+                    <RestaurantMenu sx={{
+                      color: color.firstColor,
+                      fontSize: { xs: 18, lg: 20 }
+                    }} />
+                    <Typography variant="subtitle1" fontWeight="bold" fontSize={{ xs: '14px', lg: '16px' }}>
+                      Filter by Meal Plan
+                    </Typography>
+                  </Box>
 
-            <Grid container spacing={2}>
-              {/* First show available rooms */}
-              {availableRooms.map((room: any) => {
-                const inventoryStatus = getRoomInventoryStatus(room);
-                const availableSlots = (bookingType || "").toLowerCase() === "hourly"
-                  ? ["rateFor3Hour", "rateFor6Hour", "rateFor12Hour"]
-                  : ["rateFor1Night"];
+                  {/* Mobile: Scrollable chips, Desktop: Wrap */}
+                  <Box sx={{
+                    display: 'flex',
+                    flexWrap: { xs: 'nowrap', sm: 'wrap' },
+                    overflowX: { xs: 'auto', sm: 'visible' },
+                    gap: { xs: 0.5, lg: 1 },
+                    mt: { xs: 1, lg: 2 },
+                    pb: { xs: 0.5, lg: 0 }
+                  }}>
+                    {['All Meal Plans', 'Room Only'].concat(
+                      Array.from(new Set(
+                        availableRooms.flatMap((room: any) =>
+                          getAvailableMealPlansForRoom(room).filter((plan: string) => plan !== 'Room Only')
+                        )
+                      ))
+                    ).map((plan) => {
+                      const isSelected = mealPlanFilter === (plan === 'All Meal Plans' ? '' : plan);
 
-                const hasAvailableSlots = availableSlots.some(slot => {
-                  const price = getPriceForSlot(room, slot);
-                  return price > 0 && isSlotAvailable(room, slot);
-                });
+                      // Meal plan label mapping
+                      const planLabels: Record<string, string> = {
+                        'EP': 'Room + Breakfast',
+                        'CP': 'Room + Breakfast + Lunch/Dinner',
+                        'AP': 'Room + All Meals',
+                        'MAP': 'Room + Breakfast + Dinner',
+                        'Room Only': 'Room Only',
+                        'All Meal Plans': 'All Meal Plans'
+                      };
 
-                return (
-                  <Grid item xs={12} md={7} key={`available-${room.id}`}>
-                    <Card
-                      sx={{
-                        p: 2,
-                        display: "flex",
-                        flexDirection: { xs: "column", md: "row" },
-                        alignItems: "flex-start",
-                        background: color.thirdColor,
-                        borderRadius: "12px",
-                        boxShadow: "0px 0px 20px rgba(0, 0, 0, 0.18)",
-                        border: "solid 2px",
-                        borderColor:
-                          selectedRoom?.id === room.id
-                            ? color.firstColor
-                            : "transparent",
-                        position: "relative",
-                        overflow: "visible",
-                        cursor: hasAvailableSlots ? 'pointer' : 'default',
-                        opacity: hasAvailableSlots ? 1 : 0.7,
-                      }}
-                      onClick={() => {
-                        if (!hasAvailableSlots) return;
+                      const displayLabel = planLabels[plan] || plan;
 
-                        // Select the room when card is clicked
-                        setSelectedRoom(room);
-                        // Also set default slot for this room
-                        const defaultSlot = bookingType === "hourly"
-                          ? (getPriceForSlot(room, "rateFor3Hour") > 0 && isSlotAvailable(room, "rateFor3Hour") ? "rateFor3Hour" :
-                            getPriceForSlot(room, "rateFor6Hour") > 0 && isSlotAvailable(room, "rateFor6Hour") ? "rateFor6Hour" :
-                              getPriceForSlot(room, "rateFor12Hour") > 0 && isSlotAvailable(room, "rateFor12Hour") ? "rateFor12Hour" : "rateFor1Night")
-                          : "rateFor1Night";
-                        setSelectedSlot({
-                          roomId: room.id,
-                          slot: defaultSlot
-                        });
-                      }}
-                    >
-                      {selectedRoom?.id === room.id && (
-                        <CheckCircle
+                      return (
+                        <Chip
+                          key={plan}
+                          label={displayLabel}
+                          clickable
+                          size={window.innerWidth < 600 ? "small" : "medium"}
+                          variant={isSelected ? "filled" : "outlined"}
+                          onClick={() => setMealPlanFilter(plan === 'All Meal Plans' ? '' : plan)}
                           sx={{
-                            position: "absolute",
-                            top: -10,
-                            right: -10,
-                            color: color.firstColor,
-                            background: color.thirdColor,
-                            borderRadius: "50%",
+                            borderColor: isSelected ? color.firstColor : '#e0e0e0',
+                            backgroundColor: isSelected ? color.firstColor : '#ffffff',
+                            color: isSelected ? '#ffffff' : 'text.primary',
+                            fontWeight: isSelected ? 600 : 400,
+                            fontSize: { xs: '11px', sm: '12px', lg: '13px' },
+                            height: { xs: 28, lg: 32 },
+                            '& .MuiChip-label': {
+                              px: { xs: 1, lg: 1.5 }
+                            },
+                            flexShrink: 0,
+                            whiteSpace: 'nowrap'
                           }}
                         />
-                      )}
+                      );
+                    })}
+                  </Box>
 
-                      {/* Inventory status badge */}
-                      {inventoryStatus.icon && (
-                        <Tooltip title={inventoryStatus.reason}>
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              top: 10,
-                              left: 10,
-                              background: 'rgba(0, 0, 0, 0.7)',
-                              color: 'white',
-                              borderRadius: '4px',
-                              padding: '4px 8px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              zIndex: 1,
-                            }}
-                          >
-                            {inventoryStatus.icon}
-                            <Typography variant="caption" fontWeight="bold">
-                              {inventoryStatus.status}
-                            </Typography>
-                          </Box>
-                        </Tooltip>
-                      )}
-
-                      <Box
+                  {/* Filter summary */}
+                  {mealPlanFilter && (
+                    <Box sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: { xs: 0.5, lg: 1 },
+                      mt: { xs: 1, lg: 2 }
+                    }}>
+                      <Typography variant="body2" color="textSecondary" fontSize={{ xs: '11px', lg: '14px' }}>
+                        Showing rooms with:
+                      </Typography>
+                      <Chip
+                        label={
+                          (() => {
+                            const planLabels: Record<string, string> = {
+                              'EP': 'Room + Breakfast',
+                              'CP': 'Room + Breakfast + Lunch/Dinner',
+                              'AP': 'Room + All Meals',
+                              'MAP': 'Room + Breakfast + Dinner',
+                              'Room Only': 'Room Only'
+                            };
+                            return planLabels[mealPlanFilter] || mealPlanFilter;
+                          })()
+                        }
+                        size="small"
+                        onDelete={() => setMealPlanFilter('')}
+                        deleteIcon={<Close sx={{ fontSize: { xs: 14, lg: 16 } }} />}
                         sx={{
-                          width: {
-                            xs: "100%",
-                            md: "fit-content",
-                          },
+                          fontWeight: 500,
+                          backgroundColor: '#e3f2fd',
+                          color: color.firstColor,
+                          fontSize: { xs: '11px', lg: '12px' },
+                          height: { xs: 24, lg: 28 }
+                        }}
+                      />
+                      <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>
+                        ({getFilteredRoomsCount()} rooms available)
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Alert if all rooms are unavailable - Mobile optimized */}
+                {getFilteredRooms().length === 0 && !loadingInventory && (
+                  <Alert
+                    severity="error"
+                    sx={{
+                      mb: { xs: 2, lg: 3 },
+                      borderRadius: { xs: 1, lg: 2 },
+                      border: '1px solid #ffcdd2',
+                      p: { xs: 1, lg: 2 }
+                    }}
+                    icon={<Block sx={{ fontSize: { xs: 18, lg: 20 } }} />}
+                  >
+                    <AlertTitle sx={{ fontSize: { xs: '13px', lg: '16px' } }}>
+                      No Rooms Available
+                    </AlertTitle>
+                    <Typography variant="body2" fontSize={{ xs: '11px', lg: '14px' }}>
+                      {mealPlanFilter
+                        ? `No rooms with "${mealPlanFilter}" meal plan are available for your selected dates.`
+                        : 'All rooms in this hotel are currently unavailable for your selected dates. Please try different dates or explore other hotels.'
+                      }
+                    </Typography>
+                  </Alert>
+                )}
+
+                {/* Alert if some rooms are available - Mobile optimized */}
+                {unavailableRooms.length > 0 && getFilteredRooms().length > 0 && !loadingInventory && (
+                  <Alert
+                    severity="info"
+                    sx={{
+                      mb: { xs: 2, lg: 3 },
+                      borderRadius: { xs: 1, lg: 2 },
+                      border: '1px solid #bbdefb',
+                      p: { xs: 1, lg: 2 }
+                    }}
+                    icon={<Info sx={{ fontSize: { xs: 18, lg: 20 } }} />}
+                  >
+                    <AlertTitle sx={{ fontSize: { xs: '13px', lg: '16px' } }}>
+                      Some Rooms Unavailable
+                    </AlertTitle>
+                    <Typography variant="body2" fontSize={{ xs: '11px', lg: '14px' }}>
+                      {unavailableRooms.length} room{unavailableRooms.length > 1 ? 's are' : ' is'} currently unavailable.
+                      Showing {getFilteredRooms().length} available room{getFilteredRooms().length > 1 ? 's' : ''}.
+                    </Typography>
+                  </Alert>
+                )}
+
+                {/* Rooms Grid - Mobile optimized */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, lg: 2 } }}>
+                  {getFilteredRooms().map((room: any) => {
+                    const inventoryStatus = getRoomInventoryStatus(room);
+                    const availableSlots = (bookingType || "").toLowerCase() === "hourly"
+                      ? ["rateFor3Hour", "rateFor6Hour", "rateFor12Hour"]
+                      : ["rateFor1Night"];
+
+                    const hasAvailableSlots = availableSlots.some(slot => {
+                      const price = getPriceForSlot(room, slot);
+                      return price > 0 && isSlotAvailable(room, slot);
+                    });
+
+                    return (
+                      <Card
+                        key={`available-${room.id}`}
+                        sx={{
+                          p: { xs: 1.5, lg: 2 },
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "stretch",
+                          background: '#ffffff',
+                          borderRadius: { xs: '8px', lg: '12px' },
+                          boxShadow: { xs: "0 1px 3px rgba(0,0,0,0.08)", lg: "0 2px 8px rgba(0,0,0,0.12)" },
+                          border: "1px solid #e0e0e0",
+                          position: "relative",
+                          overflow: "visible",
+                          cursor: hasAvailableSlots ? 'pointer' : 'default',
+                          opacity: hasAvailableSlots ? 1 : 0.7,
+                          transition: 'all 0.2s ease',
+                          '&:hover': {
+                            boxShadow: hasAvailableSlots ? { xs: "0 2px 6px rgba(0,0,0,0.12)", lg: "0 4px 12px rgba(0,0,0,0.15)" } : "0 1px 3px rgba(0,0,0,0.08)",
+                            borderColor: hasAvailableSlots ? color.firstColor : '#e0e0e0'
+                          }
+                        }}
+                        onClick={() => {
+                          if (!hasAvailableSlots) return;
+
+                          setSelectedRoom(room);
+                          const defaultSlot = bookingType === "hourly"
+                            ? (getPriceForSlot(room, "rateFor3Hour") > 0 && isSlotAvailable(room, "rateFor3Hour") ? "rateFor3Hour" :
+                              getPriceForSlot(room, "rateFor6Hour") > 0 && isSlotAvailable(room, "rateFor6Hour") ? "rateFor6Hour" :
+                                getPriceForSlot(room, "rateFor12Hour") > 0 && isSlotAvailable(room, "rateFor12Hour") ? "rateFor12Hour" : "rateFor1Night")
+                            : "rateFor1Night";
+                          setSelectedSlot({
+                            roomId: room.id,
+                            slot: defaultSlot
+                          });
                         }}
                       >
-                        <CardMedia
-                          component="img"
-                          height="160"
-                          sx={{
-                            borderRadius: "12px",
-                            width: { xs: "100%", md: "250px" },
-                          }}
-                          image={toCdn(room.roomImages)}
-                          alt={room.roomCategory}
-                        />
+                        {/* Selected Room Checkmark - Mobile optimized */}
+                        {selectedRoom?.id === room.id && (
+                          <CheckCircle
+                            sx={{
+                              position: "absolute",
+                              top: { xs: -6, lg: -10 },
+                              right: { xs: -6, lg: -10 },
+                              color: '#4caf50',
+                              background: '#ffffff',
+                              borderRadius: "50%",
+                              fontSize: { xs: '22px', lg: '28px' },
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                              zIndex: 2
+                            }}
+                          />
+                        )}
 
-                        <Typography
-                          variant="h6"
-                          mt={1.5}
-                          fontWeight={"bold"}
-                          sx={{
-                            background:
-                              selectedRoom?.id === room.id
-                                ? color.firstColor
-                                : "transparent",
-                            ml: -2,
-                            pl: 2,
-                            borderRadius: "0px 4px 4px 0px",
-                            color:
-                              selectedRoom?.id === room.id
-                                ? color.thirdColor
-                                : color.firstColor,
-                            mb:
-                              selectedRoom?.id === room.id ? 1 : 0,
-                            width: {
-                              xs: "fit-content",
-                              md: "100%",
-                            },
-                            pr: { xs: 2, md: 0 },
-                            mt: { xs: 2, md: 1 },
-                            transition: "all 0.3s",
-                          }}
-                        >
-                          {room.roomCategory}
-                        </Typography>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            flexWrap: "wrap",
-                            justifyContent: "flex-start",
-                            gap: "4px",
-                          }}
-                        >
-                          <Typography variant="body2">
-                            Room Size : {room.roomSize} sqft
-                          </Typography>
+                        {/* Inventory status badge - Mobile optimized */}
+                        {inventoryStatus.icon && (
+                          <Tooltip title={inventoryStatus.reason}>
+                            <Box
+                              sx={{
+                                position: "absolute",
+                                top: { xs: 6, lg: 10 },
+                                left: { xs: 6, lg: 10 },
+                                background: 'rgba(0, 0, 0, 0.7)',
+                                color: 'white',
+                                borderRadius: '4px',
+                                padding: { xs: '2px 6px', lg: '4px 8px' },
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                zIndex: 1,
+                              }}
+                            >
+                              {React.cloneElement(inventoryStatus.icon, {
+                                sx: { fontSize: { xs: 12, lg: 14 } }
+                              })}
+                              <Typography variant="caption" fontWeight="bold" fontSize={{ xs: '9px', lg: '11px' }}>
+                                {inventoryStatus.status}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
+                        )}
 
-                          {showRoomDetails && (
-                            <>
-                              <Typography variant="body2">
-                                Standard Room Occupancy :{" "}
-                                {room.standardRoomOccupancy} head(s)
-                              </Typography>
-                              <Typography variant="body2">
-                                No. Of Free Children Allowed :{" "}
-                                {room.numberOfFreeChildren}
-                              </Typography>
+                        {/* Top row: Image and basic info */}
+                        <Box sx={{
+                          display: 'flex',
+                          flexDirection: { xs: 'column', sm: 'row' },
+                          gap: { xs: 1, sm: 1.5, lg: 2 },
+                          mb: { xs: 1.5, lg: 2 }
+                        }}>
+                          {/* Room Image */}
+                          <Box sx={{
+                            width: { xs: '100%', sm: '150px', md: '200px', lg: '250px' },
+                            flexShrink: 0
+                          }}>
+                            <CardMedia
+                              component="img"
 
-                              <Typography variant="body2">
-                                Max Room Occupancy :{" "}
-                                {room.maxRoomOccupancy} head(s)
-                              </Typography>
+                              sx={{
+                                height: { xs: 120, sm: 140, lg: 160 },
+                                borderRadius: { xs: '6px', lg: '8px' },
+                                width: "100%",
+                                objectFit: 'cover'
+                              }}
+                              image={toCdn(room.roomImages)}
+                              alt={room.roomCategory}
+                            />
+                          </Box>
 
-                              <Typography variant="body2">
-                                Price per Additional Adult : ₹
-                                {room.additionalGuestRate}
+                          {/* Room Info */}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              variant="h6"
+                              fontWeight={700}
+                              sx={{
+                                color: color.firstColor,
+                                fontSize: { xs: '14px', sm: '15px', lg: '16px' },
+                                lineHeight: 1.3,
+                                mb: { xs: 0.5, lg: 1 }
+                              }}
+                            >
+                              {room.roomCategory}
+                            </Typography>
+
+                            {/* Room Size */}
+                            <Box sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.5,
+                              mb: { xs: 0.5, lg: 1 }
+                            }}>
+                              <SquareFoot sx={{ fontSize: { xs: 12, lg: 14 }, color: '#666' }} />
+                              <Typography variant="body2" color="textSecondary" fontSize={{ xs: '11px', lg: '14px' }}>
+                                {room.roomSize} sq.ft
                               </Typography>
-                              <Typography variant="body2">
-                                Price per Additional Child : ₹
-                                {room.additionalChildRate}
-                              </Typography>
-                            </>
-                          )}
+                            </Box>
+
+                            {/* Room Amenities - Compact on mobile */}
+                            <Box sx={{
+                              display: { xs: 'none', sm: 'block' },
+                              maxHeight: { sm: '60px', lg: 'none' },
+                              overflow: 'hidden'
+                            }}>
+                              <RoomAmenities key={room.id} room={room} />
+                            </Box>
+                          </Box>
+                        </Box>
+
+                        {/* Mobile-only amenities */}
+                        <Box sx={{
+                          display: { xs: 'block', sm: 'none' },
+                          mb: 1
+                        }}>
+                          <RoomAmenities key={`mobile-${room.id}`} room={room} />
+                        </Box>
+
+                        {/* Room Details Toggle - Mobile optimized */}
+                        <Box sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          mb: { xs: 1, lg: 1.5 }
+                        }}>
                           <Button
                             sx={{
                               textTransform: "none",
-                              fontSize: "12px",
+                              fontSize: { xs: '11px', lg: '12px' },
                               p: 0,
                               minWidth: 0,
-                              ml: 0.2,
                               color: color.firstColor,
+                              fontWeight: 500
                             }}
                             onClick={(e) => {
-                              e.stopPropagation(); // Prevent room selection
+                              e.stopPropagation();
                               setShowRoomDetails(!showRoomDetails);
                             }}
+                            startIcon={showRoomDetails ?
+                              <ExpandLess sx={{ fontSize: { xs: 16, lg: 18 } }} /> :
+                              <ExpandMore sx={{ fontSize: { xs: 16, lg: 18 } }} />
+                            }
                           >
-                            {showRoomDetails ? "Show less" : "...More"}
+                            {showRoomDetails ? "Show less" : "More details"}
                           </Button>
-                        </div>
-                      </Box>
 
-                      <List
-                        sx={{
-                          py: 0,
-                          mt: 1,
-                          width: "100%",
-                          pb: { xs: 0, md: "80px" },
-                        }}
-                      >
-                        <RoomAmenities key={room.id} room={room} />
-                      </List>
+                          {/* View Deal Button - Mobile */}
+                          <Button
+                            variant="contained"
+                            size="small"
+                            sx={{
+                              display: { xs: 'inline-flex', sm: 'none' },
+                              backgroundColor: color.firstColor,
+                              color: '#fff',
+                              fontWeight: 600,
+                              borderRadius: '4px',
+                              px: 1.5,
+                              py: 0.5,
+                              minWidth: '80px',
+                              fontSize: '11px',
+                              '&:hover': {
+                                backgroundColor: color.secondColor
+                              }
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (hasAvailableSlots) {
+                                setSelectedRoom(room);
+                              }
+                            }}
+                          >
+                            View Deal
+                          </Button>
+                        </Box>
 
-                      {/* ROOM SLOT PRICING (LEFT SIDE) – 3hr / 6hr / 12hr / per night */}
-                      <Box
-                        sx={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                          justifyContent: "space-around",
-                          gap: "6px",
-                          position: { xs: "unset", md: "absolute" },
-                          bottom: 16,
-                          right: 16,
-                          margin: "auto",
-                          marginTop: "20px",
-                        }}
-                      >
-                        {availableSlots
-                          .filter(slotKey => {
-                            const price = getPriceForSlot(room, slotKey);
-                            return price > 0 && isSlotAvailable(room, slotKey);
-                          })
-                          .map((slotKey) => {
-                            const slotLabel =
-                              (bookingType || "").toLowerCase() === "hourly"
-                                ? slotKey
-                                  .replace("rateFor", "")
-                                  .replace("Hour", "") + "hrs"
-                                : "Per Night";
+                        {/* Expanded Room Details */}
+                        {showRoomDetails && (
+                          <Box sx={{
+                            mt: 1,
+                            p: { xs: 1, lg: 1.5 },
+                            bgcolor: '#f9f9f9',
+                            borderRadius: 1,
+                            mb: { xs: 1, lg: 1.5 }
+                          }}>
+                            <Grid container spacing={1}>
+                              <Grid item xs={6}>
+                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                  Standard Occupancy:
+                                </Typography>
+                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                  {room.standardRoomOccupancy} guest(s)
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={6}>
+                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                  Max Occupancy:
+                                </Typography>
+                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                  {room.maxRoomOccupancy} guest(s)
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={6}>
+                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                  Additional Adult:
+                                </Typography>
+                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                  ₹{room.additionalGuestRate}
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={6}>
+                                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontSize: { xs: '10px', lg: '12px' } }}>
+                                  Additional Child:
+                                </Typography>
+                                <Typography variant="caption" fontWeight={600} sx={{ fontSize: { xs: '10px', lg: '12px' } }}>
+                                  ₹{room.additionalChildRate}
+                                </Typography>
+                              </Grid>
+                            </Grid>
+                          </Box>
+                        )}
 
-                            const price = getPriceForSlot(room, slotKey);
-                            const breakdown = calculatePriceBreakdown(price);
-                            const { basePrice, platformFee, gstTotal } = breakdown as any;
+                        {/* Pricing Section */}
+                        <Box sx={{
+                          width: '100%',
+                          borderTop: '1px solid #e0e0e0',
+                          pt: { xs: 1, lg: 1.5 }
+                        }}>
+                          {/* Price Slots - Mobile scrollable */}
+                          <Box sx={{
+                            display: "flex",
+                            gap: { xs: 0.5, lg: 1 },
+                            overflowX: { xs: 'auto', sm: 'visible' },
+                            pb: { xs: 0.5, lg: 0 },
+                            '&::-webkit-scrollbar': {
+                              height: '3px',
+                            },
+                            '&::-webkit-scrollbar-thumb': {
+                              backgroundColor: '#ccc',
+                              borderRadius: '1.5px',
+                            },
+                          }}>
+                            {availableSlots
+                              .filter(slotKey => {
+                                const price = getPriceForSlot(room, slotKey);
+                                return price > 0 && isSlotAvailable(room, slotKey);
+                              })
+                              .map((slotKey) => {
+                                const slotLabel = (bookingType || "").toLowerCase() === "hourly"
+                                  ? slotKey.replace("rateFor", "").replace("Hour", "") + " hrs"
+                                  : "Per Night";
 
-                            // per unit (per room per slot/night)
-                            const perUnitMain = basePrice + platformFee;
-                            const perUnitTaxes = gstTotal;
+                                const roomPrice = getRoomPriceOnly(room, slotKey);
+                                const totalPrice = getTotalPriceWithMeals(room, slotKey, 'Room Only');
+                                const breakdown = calculatePriceBreakdown(totalPrice);
+                                const { basePrice, platformFee, gstTotal } = breakdown as any;
+                                const perUnitMain = basePrice + platformFee;
+                                const perUnitTaxes = gstTotal;
 
-                            return (
-                              <StyledToggleButton
-                                key={slotKey}
-                                value={slotLabel}
-                                selected={
-                                  selectedSlot.roomId === room.id &&
-                                  selectedSlot.slot === slotKey
-                                }
-                                onClick={(e) => {
-                                  e.stopPropagation(); // Prevent card selection
-                                  if (isSlotAvailable(room, slotKey)) {
-                                    handleSlotSelection(room.id, slotKey);
-                                  }
-                                }}
-                                style={{
-                                  borderColor: color.forthColor,
-                                  cursor: isSlotAvailable(room, slotKey) ? 'pointer' : 'not-allowed',
-                                  opacity: isSlotAvailable(room, slotKey) ? 1 : 0.5,
-                                }}
-                                disabled={!isSlotAvailable(room, slotKey)}
-                              >
-                                <Typography
-                                  px={1}
-                                  py={0.5}
-                                  sx={{
-                                    fontSize: { xs: "8px", md: "12px" },
-                                    lineHeight: 1.4,
-                                    textAlign: 'center',
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontSize: "18px",
-                                      fontWeight: 600,
+                                return (
+                                  <Button
+                                    key={slotKey}
+                                    variant={selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? "contained" : "outlined"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (isSlotAvailable(room, slotKey)) {
+                                        handleSlotSelection(room.id, slotKey);
+                                        setSelectedMealPlan('Room Only');
+                                      }
+                                    }}
+                                    disabled={!isSlotAvailable(room, slotKey)}
+                                    sx={{
+                                      minWidth: { xs: '80px', sm: '90px', lg: '100px' },
+                                      py: { xs: 0.75, lg: 1 },
+                                      px: { xs: 0.5, lg: 1 },
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      borderColor: selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? color.firstColor : '#ddd',
+                                      backgroundColor: selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? color.firstColor : 'transparent',
+                                      flexShrink: 0,
+                                      '&:hover': {
+                                        borderColor: color.firstColor,
+                                        backgroundColor: selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? color.firstColor : 'rgba(33, 150, 243, 0.04)'
+                                      }
                                     }}
                                   >
-                                    {slotLabel}
-                                  </span>
-                                  <br />
-                                  <span style={{ fontSize: "16px", fontWeight: 700 }}>
-                                    ₹ {Math.round(perUnitMain)}
-                                  </span>
-                                  <br />
-                                  <span style={{ fontSize: "10px" }}>
-                                    + ₹{Math.round(perUnitTaxes)} taxes & fees
-                                  </span>
-                                </Typography>
-                              </StyledToggleButton>
-                            );
-                          })}
-                      </Box>
-                    </Card>
-                  </Grid>
-                );
-              })}
+                                    <Typography
+                                      variant="caption"
+                                      fontWeight={600}
+                                      color={selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? '#fff' : '#666'}
+                                      fontSize={{ xs: '9px', lg: '11px' }}
+                                    >
+                                      {slotLabel}
+                                    </Typography>
+                                    <Typography
+                                      variant="body1"
+                                      fontWeight={700}
+                                      color={selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? '#fff' : color.firstColor}
+                                      fontSize={{ xs: '12px', sm: '13px', lg: '14px' }}
+                                    >
+                                      ₹{Math.round(perUnitMain)}
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color={selectedSlot.roomId === room.id && selectedSlot.slot === slotKey ? '#fff' : '#666'}
+                                      fontSize={{ xs: '8px', lg: '10px' }}
+                                    >
+                                      +₹{Math.round(perUnitTaxes)} taxes
+                                    </Typography>
+                                  </Button>
+                                );
+                              })}
+                          </Box>
 
-              {/* Then show unavailable rooms with sold out overlay */}
-              {unavailableRooms.map((room: any) => (
-                <Grid item xs={12} md={7} key={`unavailable-${room.id}`}>
-                  <Card
-                    sx={{
-                      p: 2,
-                      display: "flex",
-                      flexDirection: { xs: "column", md: "row" },
-                      alignItems: "flex-start",
-                      background: color.thirdColor,
-                      borderRadius: "12px",
-                      boxShadow: "0px 0px 20px rgba(0, 0, 0, 0.18)",
-                      border: "solid 2px",
-                      borderColor: "transparent",
-                      position: "relative",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {/* Sold Out Overlay */}
-                    {renderSoldOutOverlay(room)}
-
-                    <Box
-                      sx={{
-                        width: {
-                          xs: "100%",
-                          md: "fit-content",
-                        },
-                        opacity: 0.5,
-                      }}
-                    >
-                      <CardMedia
-                        component="img"
-                        height="160"
-                        sx={{
-                          borderRadius: "12px",
-                          width: { xs: "100%", md: "250px" },
-                          filter: 'grayscale(50%)',
-                        }}
-                        image={room.roomImages}
-                        alt={room.roomCategory}
-                      />
-
-                      <Typography
-                        variant="h6"
-                        mt={1.5}
-                        fontWeight={"bold"}
-                        sx={{
-                          background: "transparent",
-                          ml: -2,
-                          pl: 2,
-                          borderRadius: "0px 4px 4px 0px",
-                          color: color.firstColor,
-                          mb: 0,
-                          width: {
-                            xs: "fit-content",
-                            md: "100%",
-                          },
-                          pr: { xs: 2, md: 0 },
-                          mt: { xs: 2, md: 1 },
-                          transition: "all 0.3s",
-                        }}
-                      >
-                        {room.roomCategory}
-                      </Typography>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          flexWrap: "wrap",
-                          justifyContent: "flex-start",
-                          gap: "4px",
-                        }}
-                      >
-                        <Typography variant="body2">
-                          Room Size : {room.roomSize} sqft
-                        </Typography>
-                      </div>
-                    </Box>
-
-                    <List
-                      sx={{
-                        py: 0,
-                        mt: 1,
-                        width: "100%",
-                        pb: { xs: 0, md: "80px" },
-                        opacity: 0.5,
-                      }}
-                    >
-                      <RoomAmenities key={room.id} room={room} />
-                    </List>
-
-                    {/* ROOM SLOT PRICING - Show crossed out pricing for unavailable rooms */}
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        justifyContent: "space-around",
-                        gap: "6px",
-                        position: { xs: "unset", md: "absolute" },
-                        bottom: 16,
-                        right: 16,
-                        margin: "auto",
-                        marginTop: "20px",
-                        opacity: 0.5,
-                      }}
-                    >
-                      {((bookingType || "").toLowerCase() === "hourly"
-                        ? ["rateFor3Hour", "rateFor6Hour", "rateFor12Hour"]
-                        : ["rateFor1Night"]
-                      ).filter((slotKey) => getPriceForSlot(room, slotKey) > 0)
-                        .map((slotKey) => {
-                          const slotLabel =
-                            (bookingType || "").toLowerCase() === "hourly"
-                              ? slotKey
-                                .replace("rateFor", "")
-                                .replace("Hour", "") + "hrs"
-                              : "Per Night";
-
-                          const price = getPriceForSlot(room, slotKey);
-                          const breakdown = calculatePriceBreakdown(price);
-                          const { basePrice, platformFee, gstTotal } = breakdown as any;
-
-                          const perUnitMain = basePrice + platformFee;
-                          const perUnitTaxes = gstTotal;
-
-                          return (
-                            <Box
-                              key={slotKey}
+                          {/* View Deal Button - Desktop */}
+                          <Box sx={{
+                            mt: { xs: 1, lg: 2 },
+                            textAlign: { xs: 'left', sm: 'right' },
+                            display: { xs: 'none', sm: 'block' }
+                          }}>
+                            <Button
+                              variant="contained"
+                              size="small"
                               sx={{
-                                borderRadius: "4px",
-                                textTransform: "none",
-                                fontSize: "12px",
-                                padding: "0px 10px",
+                                backgroundColor: color.firstColor,
+                                color: '#fff',
                                 fontWeight: 600,
-                                border: "1px solid rgba(61, 61, 61, 0.4)",
-                                backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                                position: 'relative',
+                                borderRadius: '6px',
+                                px: 2,
+                                py: 1,
+                                minWidth: '120px',
+                                fontSize: { sm: '12px', lg: '13px' },
+                                '&:hover': {
+                                  backgroundColor: color.secondColor
+                                }
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (hasAvailableSlots) {
+                                  setSelectedRoom(room);
+                                }
                               }}
                             >
-                              {/* Cross out line */}
-                              <Box
-                                sx={{
-                                  position: 'absolute',
-                                  top: '50%',
-                                  left: 0,
-                                  right: 0,
-                                  height: '2px',
-                                  backgroundColor: '#ff4444',
-                                  transform: 'rotate(-15deg)',
-                                  zIndex: 1,
-                                }}
-                              />
+                              View Deal
+                            </Button>
+                          </Box>
+                        </Box>
+                      </Card>
+                    );
+                  })}
+                </Box>
 
-                              <Typography
-                                px={1}
-                                py={0.5}
+                {/* Alternative Stays Button - Mobile optimized */}
+                {hasAlternativeStays && !loadingSimilarHotels && !checkingAlternativeStays && (
+                  <Box sx={{
+                    mt: 3,
+                    p: { xs: 1.5, lg: 2 },
+                    bgcolor: '#fff',
+                    borderRadius: { xs: '8px', lg: '12px' },
+                    border: '1px solid #e0e0e0',
+                    boxShadow: { xs: '0 1px 3px rgba(0,0,0,0.08)', lg: '0 2px 8px rgba(0,0,0,0.12)' }
+                  }}>
+                    <Typography variant="subtitle2" fontWeight={600} mb={1} fontSize={{ xs: '13px', lg: '14px' }}>
+                      Looking for {bookingType === "hourly" ? "overnight" : "hourly"} stays?
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      startIcon={<Search sx={{ fontSize: { xs: 16, lg: 18 } }} />}
+                      onClick={() => {
+                        const searchParams = new URLSearchParams();
+                        searchParams.set("location", "Bhubaneswar");
+                        const oppositeBookingType = bookingType === "hourly" ? "fullDay" : "hourly";
+                        searchParams.set("bookingType", oppositeBookingType);
+
+                        if (oppositeBookingType === "hourly") {
+                          searchParams.set("bookingHours", "3");
+                          searchParams.set("rooms", "1");
+                          searchParams.set("adults", "1");
+                          searchParams.set("children", "0");
+                        } else {
+                          const today = dayjs().format('YYYY-MM-DD');
+                          const tomorrow = dayjs().add(1, 'day').format('YYYY-MM-DD');
+                          searchParams.set("checkinDate", today);
+                          searchParams.set("checkOutDate", tomorrow);
+                          searchParams.set("rooms", "1");
+                          searchParams.set("adults", "1");
+                          searchParams.set("children", "0");
+                          searchParams.set("nights", "1");
+                        }
+
+                        navigate(`/search?${searchParams.toString()}`);
+                      }}
+                      sx={{
+                        borderColor: color.firstColor,
+                        color: color.firstColor,
+                        fontSize: { xs: '12px', lg: '14px' },
+                        py: { xs: 0.75, lg: 1 },
+                        '&:hover': {
+                          borderColor: color.secondColor,
+                          backgroundColor: 'rgba(33, 150, 243, 0.04)'
+                        }
+                      }}
+                    >
+                      Search {bookingType === "hourly" ? "Overnight" : "Hourly"} Stays
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+
+              {/* RIGHT SIDE - Booking Summary (40% width) - Mobile optimized */}
+              <Box sx={{
+                flex: { xs: 1, lg: 0.4 },
+                position: { xs: 'sticky', lg: 'sticky' },
+                top: { xs: 0, lg: 20 },
+                bottom: { xs: 0, lg: 'auto' },
+                alignSelf: { xs: 'stretch', lg: 'flex-start' },
+                height: { xs: '50vh', lg: 'calc(100vh - 100px)' }, // Changed from max-height to height
+                overflowY: 'auto',
+                zIndex: { xs: 1000, lg: 1 },
+                bgcolor: { xs: '#fff', lg: 'transparent' },
+                boxShadow: { xs: '0 -2px 10px rgba(0,0,0,0.1)', lg: 'none' },
+                borderTop: { xs: '1px solid #e0e0e0', lg: 'none' },
+                order: { xs: 1, lg: 2 },
+                '&::-webkit-scrollbar': { width: '4px' },
+                '&::-webkit-scrollbar-thumb': { backgroundColor: '#ccc', borderRadius: '2px' },
+              }}>
+                <Card sx={{
+                  borderRadius: { xs: 0, lg: '12px' },
+                  boxShadow: { xs: 'none', lg: '0 4px 12px rgba(0,0,0,0.1)' },
+                  border: { xs: 'none', lg: '1px solid #e0e0e0' },
+                  overflow: 'visible',
+                  minHeight: { xs: '100%', lg: '400px' }, // Changed to 100% for mobile
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  {/* Mobile header - Close button */}
+                  {isMobile && (
+                    <Box sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      p: 1.5,
+                      borderBottom: '1px solid #e0e0e0',
+                      bgcolor: '#f9f9f9',
+                      flexShrink: 0 // Prevent header from shrinking
+                    }}>
+                      <Typography variant="subtitle1" fontWeight={600}>
+                        Booking Summary
+                      </Typography>
+                      <IconButton size="small" onClick={() => {/* Add close handler */ }}>
+                        <Close />
+                      </IconButton>
+                    </Box>
+                  )}
+
+                  {/* Scrollable content container */}
+                  <Box sx={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    '&::-webkit-scrollbar': { width: '3px' },
+                    '&::-webkit-scrollbar-thumb': { backgroundColor: '#ddd', borderRadius: '1.5px' },
+                  }}>
+                    {/* Selected Room Header */}
+                    <Box sx={{
+                      background: `linear-gradient(135deg, ${color.firstColor}, ${color.secondColor})`,
+                      p: { xs: 1.5, lg: 2 },
+                      borderTopLeftRadius: { xs: 0, lg: '12px' },
+                      borderTopRightRadius: { xs: 0, lg: '12px' },
+                      color: '#fff',
+                      textAlign: 'center',
+                      flexShrink: 0
+                    }}>
+                      <Typography variant="h6" fontWeight={700} fontSize={{ xs: '15px', lg: '18px' }}>
+                        {selectedRoom ? selectedRoom.roomCategory : 'Select a Room'}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.9 }} fontSize={{ xs: '11px', lg: '12px' }}>
+                        {selectedRoom ? `${selectedRoom.roomSize} sq.ft` : 'Choose from available rooms'}
+                      </Typography>
+                    </Box>
+
+                    {/* Stay Details Section */}
+                    <Box sx={{
+                      p: { xs: 1.5, lg: 2 },
+                      flexShrink: 0
+                    }}>
+                      {/* Dates */}
+                      <Box sx={{ mb: { xs: 1.5, lg: 2 } }}>
+                        <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={1} fontSize={{ xs: '12px', lg: '14px' }}>
+                          Stay Dates
+                        </Typography>
+                        <Box sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          bgcolor: '#f5f5f5',
+                          p: { xs: 1, lg: 1.5 },
+                          borderRadius: '6px'
+                        }}>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>Check-in</Typography>
+                            <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '12px', lg: '14px' }}>
+                              {checkinDate ? dayjs(checkinDate).format("DD MMM") : "Select"}
+                            </Typography>
+                            {bookingType === "hourly" && checkinTime && (
+                              <Typography variant="caption" color="textSecondary" fontSize={{ xs: '9px', lg: '11px' }}>
+                                {dayjs(checkinTime, "HH:mm").format("hh:mm A")}
+                              </Typography>
+                            )}
+                          </Box>
+                          <ArrowRightAlt sx={{ color: '#666', fontSize: { xs: 18, lg: 20 }, mx: { xs: 0.5, lg: 1 } }} />
+                          <Box sx={{ flex: 1, textAlign: 'right' }}>
+                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>
+                              {bookingType === "hourly" ? "Duration" : "Check-out"}
+                            </Typography>
+                            {bookingType === "hourly" ? (
+                              <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '12px', lg: '14px' }}>
+                                {selectedSlot.slot === "rateFor3Hour" ? "3H" :
+                                  selectedSlot.slot === "rateFor6Hour" ? "6H" :
+                                    selectedSlot.slot === "rateFor12Hour" ? "12H" : "Select"}
+                              </Typography>
+                            ) : (
+                              <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '12px', lg: '14px' }}>
+                                {checkOutDate ? dayjs(checkOutDate).format("DD MMM") : "Select"}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                        {bookingType !== "hourly" && perStayMultiplier > 0 && (
+                          <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block', textAlign: 'center' }} fontSize={{ xs: '10px', lg: '12px' }}>
+                            {perStayMultiplier} night{perStayMultiplier > 1 ? 's' : ''} stay
+                          </Typography>
+                        )}
+                      </Box>
+
+                      {/* Room & Guests */}
+                      <Box sx={{ mb: { xs: 1.5, lg: 2 } }}>
+                        <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={1} fontSize={{ xs: '12px', lg: '14px' }}>
+                          Room & Guests
+                        </Typography>
+                        <Box sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          bgcolor: '#f5f5f5',
+                          p: { xs: 1, lg: 1.5 },
+                          borderRadius: '6px'
+                        }}>
+                          <Box>
+                            <Typography variant="body2" fontWeight={700} color={color.firstColor} fontSize={{ xs: '13px', lg: '14px' }}>
+                              {roomsCountParam} Room{roomsCountParam > 1 ? 's' : ''}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary" fontSize={{ xs: '11px', lg: '12px' }}>
+                              {adults} Adult{adults !== "1" ? 's' : ''}
+                              {children !== "0" ? `, ${children} Child${children !== "1" ? 'ren' : ''}` : ''}
+                            </Typography>
+                          </Box>
+                          {selectedRoom && (
+                            <Chip
+                              label={`Max ${selectedRoom.standardRoomOccupancy}`}
+                              size="small"
+                              sx={{
+                                bgcolor: color.firstColor,
+                                color: '#fff',
+                                fontSize: { xs: '10px', lg: '12px' },
+                                height: { xs: 24, lg: 28 }
+                              }}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                    </Box>
+
+                    <Divider sx={{ mx: { xs: 1.5, lg: 2 } }} />
+
+                    {/* Meal Plan Selection */}
+                    {/* Meal Plan Selection */}
+                    {selectedRoom && !loadingMealPlans && (
+                      <Box sx={{
+                        p: { xs: 1.5, lg: 2 },
+                        flexShrink: 0
+                      }}>
+                        <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={1} fontSize={{ xs: '12px', lg: '14px' }}>
+                          Select Meal Plan
+                        </Typography>
+                        <Box sx={{
+                          display: 'flex',
+                          gap: { xs: 0.75, lg: 1 },
+                          overflowX: 'auto',
+                          pb: 1,
+                          '&::-webkit-scrollbar': { height: '3px' }
+                        }}>
+                          {getAvailableMealPlansForRoom(selectedRoom).map((plan: string) => {
+                            const mealPrice = calculateMealPlanPrice(selectedRoom, plan);
+                            const roomPrice = selectedSlot.slot ? getRoomPriceOnly(selectedRoom, selectedSlot.slot) : 0;
+
+                            // Calculate breakdowns separately
+                            const roomOnlyTotal = roomPrice;
+                            const roomBreakdown = calculatePriceBreakdown(roomOnlyTotal);
+
+                            let mealBreakdown = null;
+                            if (plan !== 'Room Only') {
+                              mealBreakdown = calculatePriceBreakdown(mealPrice);
+                            }
+
+                            // Calculate totals with multiplier
+                            const totalRoomPrice = (roomBreakdown.basePrice + roomBreakdown.platformFee) * totalMultiplier;
+                            const totalRoomTax = roomBreakdown.gstTotal * totalMultiplier;
+
+                            let totalMealPrice = 0;
+                            let totalMealTax = 0;
+                            if (plan !== 'Room Only' && mealBreakdown) {
+                              totalMealPrice = (mealBreakdown.basePrice + mealBreakdown.platformFee) * totalMultiplier;
+                              totalMealTax = mealBreakdown.gstTotal * totalMultiplier;
+                            }
+
+                            const totalForPlan = totalRoomPrice + totalMealPrice;
+                            const totalTaxForPlan = totalRoomTax + totalMealTax;
+
+                            return (
+                              <Card
+                                key={plan}
+                                onClick={() => setSelectedMealPlan(plan)}
                                 sx={{
-                                  fontSize: { xs: "8px", md: "12px" },
-                                  lineHeight: 1.4,
-                                  color: 'rgba(0, 0, 0, 0.5)',
-                                  position: 'relative',
-                                  zIndex: 2,
-                                  textAlign: 'center',
+                                  minWidth: { xs: 160, lg: 180 },
+                                  border: `2px solid ${selectedMealPlan === plan ? color.firstColor : '#e0e0e0'}`,
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  bgcolor: selectedMealPlan === plan ? '#e3f2fd' : '#fff',
+                                  transition: 'all 0.2s ease',
+                                  flexShrink: 0,
+                                  '&:hover': { borderColor: color.firstColor }
                                 }}
                               >
-                                <span
-                                  style={{
-                                    fontSize: "18px",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {slotLabel}
-                                </span>
-                                <br />
-                                <span style={{ fontSize: "16px", fontWeight: 700 }}>
-                                  ₹ {Math.round(perUnitMain)}
-                                </span>
-                                <br />
-                                <span style={{ fontSize: "10px", color: color.forthColor }}>
-                                  + ₹{Math.round(perUnitTaxes)} taxes & fees
-                                </span>
-                              </Typography>
+                                <Box sx={{ p: { xs: 1, lg: 1.5 } }}>
+                                  {/* Plan Name and Icon */}
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                                    {getMealPlanIcon(plan) || <RestaurantMenu sx={{ fontSize: { xs: 14, lg: 16 } }} />}
+                                    <Typography variant="body2" fontWeight={600} fontSize={{ xs: '12px', lg: '13px' }}>
+                                      {getMealPlanDescription(plan)}
+                                    </Typography>
+                                  </Box>
+                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '11px' }}>
+                                    {plan === 'Room Only' ? 'No meals' : 'Includes meals'}
+                                  </Typography>
+
+                                  {/* Price Display */}
+                                  <Typography variant="body1" fontWeight={700} color={color.firstColor} fontSize={{ xs: '13px', lg: '15px' }}>
+                                    ₹{Math.round(totalForPlan)}
+                                  </Typography>
+
+                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '8px', lg: '9px' }} sx={{ display: 'block' }}>
+                                    + ₹{Math.round(totalTaxForPlan)} taxes & fees
+                                  </Typography>
+
+
+                                  {/* Total with taxes */}
+
+                                </Box>
+                              </Card>
+                            );
+                          })}
+                        </Box>
+                      </Box>
+                    )}
+
+                    <Divider sx={{ mx: { xs: 1.5, lg: 2 } }} />
+
+                    {/* Price Breakdown */}
+                    <Box sx={{
+                      p: { xs: 1.5, lg: 2 },
+                      flexShrink: 0
+                    }}>
+                      <Typography variant="subtitle2" fontWeight={600} color="textSecondary" mb={2} fontSize={{ xs: '12px', lg: '14px' }}>
+                        Price Summary
+                      </Typography>
+
+                      {/* Calculate breakdowns exactly like meal plan cards */}
+                      {(() => {
+                        // Get the room price and calculate breakdown
+                        const roomPrice = selectedSlot.slot ? getRoomPriceOnly(selectedRoom, selectedSlot.slot) : 0;
+                        const roomBreakdown = calculatePriceBreakdown(roomPrice);
+
+                        // Calculate meal breakdown if meal plan is selected
+                        let mealBreakdown = null;
+                        if (selectedMealPlan !== 'Room Only') {
+                          const mealPrice = calculateMealPlanPrice(selectedRoom, selectedMealPlan);
+                          mealBreakdown = calculatePriceBreakdown(mealPrice);
+                        }
+
+                        // Calculate totals with multiplier - SAME LOGIC as meal plan cards
+                        const totalRoomPrice = (roomBreakdown.basePrice + roomBreakdown.platformFee) * totalMultiplier;
+                        const totalRoomTax = roomBreakdown.gstTotal * totalMultiplier;
+
+                        let totalMealPrice = 0;
+                        let totalMealTax = 0;
+                        if (selectedMealPlan !== 'Room Only' && mealBreakdown) {
+                          totalMealPrice = (mealBreakdown.basePrice + mealBreakdown.platformFee) * totalMultiplier;
+                          totalMealTax = mealBreakdown.gstTotal * totalMultiplier;
+                        }
+
+                        // Calculate the base price (without taxes)
+                        const totalBasePrice = totalRoomPrice + totalMealPrice;
+
+                        // Calculate the total tax - SAME as meal plan cards
+                        const totalTax = totalRoomTax + totalMealTax;
+
+                        return (
+                          <>
+                            {/* Total Amount - Same format as meal plan cards */}
+                            <Box sx={{
+                              bgcolor: '#f9f9f9',
+                              p: { xs: 1.5, lg: 2 },
+                              borderRadius: '6px',
+                              border: '1px solid #e0e0e0',
+                              mb: 2
+                            }}>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Box>
+                                  <Typography variant="h6" fontWeight={700} fontSize={{ xs: '14px', lg: '16px' }}>
+                                    Total Amount
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ textAlign: 'right' }}>
+                                  {/* Show base price (without taxes) - Just like meal plan cards */}
+                                  <Typography variant="h5" fontWeight={800} color={color.firstColor} fontSize={{ xs: '16px', lg: '20px' }}>
+                                    ₹{Math.round(totalBasePrice)}
+                                  </Typography>
+
+                                  {/* Show taxes & fees separately - USING SAME CALCULATION as meal plan cards */}
+                                  <Typography variant="caption" color="textSecondary" fontSize={{ xs: '10px', lg: '12px' }}>
+                                    + ₹{Math.round(totalTax)} taxes & fees
+                                  </Typography>
+                                </Box>
+                              </Box>
                             </Box>
-                          );
-                        })}
+
+                            {/* Savings Info */}
+                            {displayBasePlus700 > displayCombinedBasePlatform && (
+                              <Alert
+                                severity="success"
+                                sx={{
+                                  mb: 2,
+                                  borderRadius: '6px',
+                                  py: { xs: 0.5, lg: 1 },
+                                  '& .MuiAlert-icon': { fontSize: { xs: 16, lg: 20 } }
+                                }}
+                              >
+                                <Typography variant="caption" fontWeight={600} fontSize={{ xs: '11px', lg: '12px' }}>
+                                  You save ₹{Math.round(displayBasePlus700 - displayCombinedBasePlatform)}!
+                                </Typography>
+                              </Alert>
+                            )}
+                          </>
+                        );
+                      })()}
                     </Box>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
+                  </Box>
 
-            {/* Show alternative booking type search button INSIDE TabPanel */}
-            {checkingAlternativeStays ? (
-              <Box sx={{ mt: 2, mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-                <CircularProgress size={20} />
-                <Typography variant="body2" color="textSecondary">
-                  Checking for {bookingType === "hourly" ? "overnight" : "hourly"} stays in similar hotels...
-                </Typography>
+                  {/* Book Now Button - Fixed at bottom */}
+                  <Box sx={{
+                    p: { xs: 1.5, lg: 2 },
+                    pt: 0,
+                    bgcolor: '#fff',
+                    borderTop: { xs: '1px solid #e0e0e0', lg: 'none' },
+                    flexShrink: 0,
+                    position: 'sticky',
+                    bottom: 0,
+                    zIndex: 10
+                  }}>
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      size="large"
+                      onClick={handleBookNow}
+                      disabled={availableRooms.length === 0}
+                      sx={{
+                        height: { xs: '48px', lg: '56px' },
+                        fontSize: { xs: '15px', lg: '16px' },
+                        fontWeight: 700,
+                        background: `linear-gradient(135deg, ${color.firstColor}, ${color.secondColor})`,
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)',
+                        '&:hover': {
+                          background: `linear-gradient(135deg, ${color.secondColor}, ${color.firstColor})`,
+                          boxShadow: '0 6px 16px rgba(33, 150, 243, 0.4)'
+                        },
+                        '&:disabled': {
+                          background: '#ccc',
+                          boxShadow: 'none'
+                        }
+                      }}
+                    >
+                      {availableRooms.length === 0 ? 'No Rooms Available' : 'Book Now'}
+                    </Button>
+
+
+                  </Box>
+                </Card>
               </Box>
-            ) : hasAlternativeStays && !loadingSimilarHotels && (
-              <Box sx={{ mt: 2, mb: 3 }}>
-                <CustomButton
-                  variant="contained"
-                  startIcon={<Search />}
-                  customStyles={{
-                    backgroundColor: bookingType === "hourly" ? color.secondColor : color.firstColor,
-                    color: color.thirdColor,
-                    fontWeight: 600,
-                    fontSize: "14px",
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                  }}
-                  onClick={() => {
-                    // Get current search params
-                    const searchParams = new URLSearchParams();
-
-                    // Set location to "Bhubaneswar" as requested
-                    searchParams.set("location", "Bhubaneswar");
-
-                    // Set booking type to the opposite of current
-                    const oppositeBookingType = bookingType === "hourly" ? "fullDay" : "hourly";
-                    searchParams.set("bookingType", oppositeBookingType);
-
-                    if (oppositeBookingType === "hourly") {
-                      // Set default hourly parameters
-                      searchParams.set("bookingHours", "3");
-                      searchParams.set("rooms", "1");
-                      searchParams.set("adults", "1");
-                      searchParams.set("children", "0");
-                    } else {
-                      // Set default overnight parameters
-                      const today = dayjs().format('YYYY-MM-DD');
-                      const tomorrow = dayjs().add(1, 'day').format('YYYY-MM-DD');
-                      searchParams.set("checkinDate", today);
-                      searchParams.set("checkOutDate", tomorrow);
-                      searchParams.set("rooms", "1");
-                      searchParams.set("adults", "1");
-                      searchParams.set("children", "0");
-                      searchParams.set("nights", "1");
-                    }
-
-                    // Navigate to search results
-                    navigate(`/search?${searchParams.toString()}`);
-                  }}
-                >
-                  {bookingType === "hourly" ? "Search Overnight Stays" : "Search Hourly Stays"} in Similar Hotels
-                </CustomButton>
-                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1, fontSize: '12px' }}>
-                  {getPriceText()}
-                </Typography>
-              </Box>
-            )}
+            </Box>
           </TabPanel>
 
           <TabPanel value={value} index={1}>
