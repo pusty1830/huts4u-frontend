@@ -20,7 +20,7 @@ import {
 } from "../../services/services";
 import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
-import { CDN_URL } from "../../services/Secret";
+import { CDN_URL, s3BASEURL } from "../../services/Secret";
 
 // 💰 Price Calculation
 export const calculatePriceBreakdown = (basePrice: number) => {
@@ -66,7 +66,7 @@ export const calculatePriceBreakdown = (basePrice: number) => {
   };
 };
 
-const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+const S3_BASE_URL = s3BASEURL;
 const CDN_BASE_URL = CDN_URL; // replace with real
 
 const toCdn = (url?: string) => {
@@ -122,17 +122,17 @@ const getRatingsForHotel = (ratingsData: any, hotelId: string) => {
 // Function to get inventory-based price
 const getInventoryPrice = (room: any, inventoryData: any[], checkDate: string, slot: string): number => {
   if (!room || !checkDate) return room[slot] || 0;
-  
+
   const roomId = room.id;
   const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  
-  const dayInventory = inventoryData?.find(inv => 
+
+  const dayInventory = inventoryData?.find(inv =>
     inv.roomId === roomId && dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   );
 
   if (!dayInventory) return room[slot] || 0;
 
-  switch(slot) {
+  switch (slot) {
     case 'rateFor1Night':
       return dayInventory.overnightRate || room.rateFor1Night || 0;
     case 'rateFor3Hour':
@@ -149,21 +149,21 @@ const getInventoryPrice = (room: any, inventoryData: any[], checkDate: string, s
 // Function to check slot availability
 const isSlotAvailable = (room: any, inventoryData: any[], checkDate: string, slot: string): boolean => {
   if (!room || !checkDate) return false;
-  
+
   const roomStatus = room.status?.toLowerCase();
   const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
   if (!isStatusAvailable) return false;
-  
+
   const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  const dayInventory = inventoryData?.find(inv => 
+  const dayInventory = inventoryData?.find(inv =>
     dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   );
-  
+
   if (!dayInventory) return true;
-  
+
   if (dayInventory.isBlocked) return false;
 
-  switch(slot) {
+  switch (slot) {
     case 'rateFor1Night':
       return dayInventory.overnightAvailable > dayInventory.overnightBooked;
     case 'rateFor3Hour':
@@ -180,20 +180,20 @@ const isSlotAvailable = (room: any, inventoryData: any[], checkDate: string, slo
 // Function to check overall room availability
 const checkRoomAvailability = (room: any, inventoryData: any[], checkDate: string): boolean => {
   if (!room || !checkDate) return false;
-  
+
   const roomStatus = room.status?.toLowerCase();
   const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
   if (!isStatusAvailable) return false;
-  
+
   if (!inventoryData || inventoryData.length === 0) return true;
-  
+
   const checkDay = dayjs(checkDate).format('YYYY-MM-DD');
-  const dayInventory = inventoryData.find(inv => 
+  const dayInventory = inventoryData.find(inv =>
     dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   );
-  
+
   if (!dayInventory) return true;
-  
+
   if (dayInventory.isBlocked) return false;
 
   // Check if any slot is available
@@ -206,63 +206,63 @@ const checkRoomAvailability = (room: any, inventoryData: any[], checkDate: strin
 };
 
 // Function to get inventory status
-const getInventoryStatus = (room: any, inventoryData: any[], checkDate: string): { 
-  isAvailable: boolean, 
-  status: string, 
-  reason: string 
+const getInventoryStatus = (room: any, inventoryData: any[], checkDate: string): {
+  isAvailable: boolean,
+  status: string,
+  reason: string
 } => {
   const roomStatus = room.status?.toLowerCase();
   const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
-  
+
   if (!isStatusAvailable) {
-    return { 
-      isAvailable: false, 
-      status: 'Unavailable', 
+    return {
+      isAvailable: false,
+      status: 'Unavailable',
       reason: 'Room is currently unavailable'
     };
   }
 
   if (!inventoryData || inventoryData.length === 0) {
-    return { 
-      isAvailable: true, 
-      status: 'Available', 
+    return {
+      isAvailable: true,
+      status: 'Available',
       reason: 'Available for booking'
     };
   }
-  
+
   const checkDay = checkDate ? dayjs(checkDate).format('YYYY-MM-DD') : '';
-  const dayInventory = checkDay ? inventoryData.find(inv => 
+  const dayInventory = checkDay ? inventoryData.find(inv =>
     dayjs(inv.date).format('YYYY-MM-DD') === checkDay
   ) : null;
-  
+
   if (dayInventory) {
     if (dayInventory.isBlocked) {
-      return { 
-        isAvailable: false, 
-        status: 'Blocked', 
+      return {
+        isAvailable: false,
+        status: 'Blocked',
         reason: 'Room is blocked for selected date'
       };
     }
-    
+
     // Check if any slot is available
-    const hasAvailability = 
+    const hasAvailability =
       dayInventory.overnightAvailable > dayInventory.overnightBooked ||
       dayInventory.threeHourAvailable > dayInventory.threeHourBooked ||
       dayInventory.sixHourAvailable > dayInventory.sixHourBooked ||
       dayInventory.twelveHourAvailable > dayInventory.twelveHourBooked;
-    
+
     if (!hasAvailability) {
-      return { 
-        isAvailable: false, 
-        status: 'Sold Out', 
+      return {
+        isAvailable: false,
+        status: 'Sold Out',
         reason: 'No slots available for selected date'
       };
     }
   }
-  
-  return { 
-    isAvailable: true, 
-    status: 'Available', 
+
+  return {
+    isAvailable: true,
+    status: 'Available',
     reason: 'Available for booking'
   };
 };
@@ -271,7 +271,7 @@ const getInventoryStatus = (room: any, inventoryData: any[], checkDate: string):
 const fetchRoomInventory = async (roomId: string, checkDate: string) => {
   try {
     const payLoad = {
-      data: { 
+      data: {
         filter: "",
         roomId: roomId,
         date: checkDate
@@ -282,7 +282,7 @@ const fetchRoomInventory = async (roomId: string, checkDate: string) => {
     };
 
     const inventoryResponse = await getAllInventories(payLoad);
-    
+
     let inventoryArray: any[] = [];
     if (inventoryResponse?.data?.data?.data && Array.isArray(inventoryResponse.data.data.data)) {
       inventoryArray = inventoryResponse.data.data.data;
@@ -307,23 +307,23 @@ const getBaseRateInfo = (hotel: any, inventoryData: any[] = [], checkDate: strin
   if (!firstRoom) return { rate: 0, label: "" };
 
   const options = [
-    { 
-      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor3Hour'), 
+    {
+      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor3Hour'),
       label: "per 3 hour",
       slot: 'rateFor3Hour'
     },
-    { 
-      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor6Hour'), 
+    {
+      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor6Hour'),
       label: "per 6 hour",
       slot: 'rateFor6Hour'
     },
-    { 
-      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor12Hour'), 
+    {
+      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor12Hour'),
       label: "per 12 hour",
       slot: 'rateFor12Hour'
     },
-    { 
-      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor1Night'), 
+    {
+      rate: getInventoryPrice(firstRoom, inventoryData, checkDate, 'rateFor1Night'),
       label: "per night",
       slot: 'rateFor1Night'
     },
@@ -339,7 +339,7 @@ const selectRandomProperties = (hotels: any[], count: number = 20) => {
   if (hotels.length <= count) return hotels;
 
   const shuffled = [...hotels];
-  
+
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -378,7 +378,7 @@ const selectMixedProperties = (hotels: any[], count: number = 20) => {
   const getHotelPrice = (hotel: any, checkDate: string) => {
     const firstRoom = hotel?.rooms?.[0];
     if (!firstRoom) return 0;
-    
+
     const inventoryData = hotel._inventoryData?.[firstRoom.id] || [];
     const baseRateInfo = getBaseRateInfo(hotel, inventoryData, checkDate);
     return baseRateInfo.rate;
@@ -386,7 +386,7 @@ const selectMixedProperties = (hotels: any[], count: number = 20) => {
 
   // Get today's date for inventory check
   const today = dayjs().format('YYYY-MM-DD');
-  
+
   const budgetHotels = shuffled.filter(h => getHotelPrice(h, today) <= 1500 && getHotelPrice(h, today) > 0);
   const midRangeHotels = shuffled.filter(h => getHotelPrice(h, today) > 1500 && getHotelPrice(h, today) <= 3000);
   const luxuryHotels = shuffled.filter(h => getHotelPrice(h, today) > 3000);
@@ -425,7 +425,7 @@ const HotelCardCarousel = () => {
   const [allHotels, setAllHotels] = useState<any[]>([]);
   const [displayHotels, setDisplayHotels] = useState<any[]>([]);
   const [allRatings, setAllRatings] = useState<any>(null);
-  const [inventoryData, setInventoryData] = useState<{[key: string]: any}>({});
+  const [inventoryData, setInventoryData] = useState<{ [key: string]: any }>({});
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -437,21 +437,21 @@ const HotelCardCarousel = () => {
     slidesToScroll: 1,
     arrows: false,
     responsive: [
-      { 
-        breakpoint: 1024, 
-        settings: { 
+      {
+        breakpoint: 1024,
+        settings: {
           slidesToShow: 2,
           centerMode: false,
           arrows: false,
-        } 
+        }
       },
-      { 
-        breakpoint: 600, 
-        settings: { 
+      {
+        breakpoint: 600,
+        settings: {
           slidesToShow: 1,
           centerMode: false,
           arrows: false,
-        } 
+        }
       },
     ],
   };
@@ -490,7 +490,7 @@ const HotelCardCarousel = () => {
 
   // Fetch inventory for a hotel
   const fetchHotelInventory = async (hotel: any, checkDate: string) => {
-    const inventoryByRoom: {[key: string]: any[]} = {};
+    const inventoryByRoom: { [key: string]: any[] } = {};
 
     if (!hotel.rooms || hotel.rooms.length === 0) {
       return inventoryByRoom;
@@ -563,10 +563,10 @@ const HotelCardCarousel = () => {
         }
 
         console.log(`Total hotels fetched with rooms: ${mergedData.length}`);
-        
+
         // Store all hotels
         setAllHotels(mergedData);
-        
+
         // Select mixed 20 properties for display
         const mixedProperties = selectMixedProperties(mergedData, 15); // Reduced to 15 for performance
         setDisplayHotels(mixedProperties);
@@ -582,7 +582,7 @@ const HotelCardCarousel = () => {
         const inventoryMap = inventoryResults.reduce((acc, { hotelId, inventory }) => {
           acc[hotelId] = inventory;
           return acc;
-        }, {} as {[key: string]: any});
+        }, {} as { [key: string]: any });
 
         setInventoryData(inventoryMap);
 
@@ -605,7 +605,7 @@ const HotelCardCarousel = () => {
 
     const roomInventory = inventoryData[hotel.id]?.[firstRoom.id] || [];
     const inventoryStatus = getInventoryStatus(firstRoom, roomInventory, dayjs().format('YYYY-MM-DD'));
-    
+
     if (!inventoryStatus.isAvailable) return;
 
     const searchData = {
@@ -666,11 +666,11 @@ const HotelCardCarousel = () => {
           const firstRoom = hotel?.rooms?.[0];
           const roomInventory = inventoryData[hotel.id]?.[firstRoom?.id] || [];
           const today = dayjs().format('YYYY-MM-DD');
-          
+
           // Get base rate with inventory consideration
           const baseRateInfo = getBaseRateInfo(hotel, roomInventory, today);
           const { rate: baseRate, label } = baseRateInfo;
-          
+
           const { basePrice, platformFee, gstTotal } =
             calculatePriceBreakdown(baseRate);
 
@@ -678,8 +678,8 @@ const HotelCardCarousel = () => {
           const taxesAndFees = gstTotal;
 
           // Check availability
-          const inventoryStatus = firstRoom ? 
-            getInventoryStatus(firstRoom, roomInventory, today) : 
+          const inventoryStatus = firstRoom ?
+            getInventoryStatus(firstRoom, roomInventory, today) :
             { isAvailable: false, status: 'No Rooms', reason: 'No rooms available' };
 
           const isAvailable = inventoryStatus.isAvailable;
@@ -689,9 +689,9 @@ const HotelCardCarousel = () => {
           const reviewCount = hotel.ratings?.count || 0;
 
           return (
-            <Box 
-              key={hotel.id} 
-              sx={{ 
+            <Box
+              key={hotel.id}
+              sx={{
                 height: '100%',
                 display: 'flex',
                 justifyContent: 'center',
@@ -793,7 +793,7 @@ const HotelCardCarousel = () => {
                     height="200"
                     image={toCdn(hotel.propertyImages?.[0])}
                     alt={hotel.propertyName}
-                    sx={{ 
+                    sx={{
                       objectFit: "cover",
                       width: '100%',
                       height: '100%'
@@ -802,9 +802,9 @@ const HotelCardCarousel = () => {
                 </Box>
 
                 {/* Card content with flex-grow to fill remaining space */}
-                <CardContent sx={{ 
-                  flexGrow: 1, 
-                  display: 'flex', 
+                <CardContent sx={{
+                  flexGrow: 1,
+                  display: 'flex',
                   flexDirection: 'column',
                   p: 2,
                   pb: 3,
@@ -835,8 +835,8 @@ const HotelCardCarousel = () => {
 
                   {/* Property name - fixed height with minHeight */}
                   <Typography
-                    sx={{ 
-                      fontFamily: "CustomFontB", 
+                    sx={{
+                      fontFamily: "CustomFontB",
                       mb: 0.5,
                       minHeight: '3em',
                       overflow: 'hidden',
@@ -852,10 +852,10 @@ const HotelCardCarousel = () => {
                   </Typography>
 
                   {/* Price section - dynamic pricing */}
-                  <Box sx={{ 
-                    minHeight: '60px', 
-                    display: 'flex', 
-                    flexDirection: 'column', 
+                  <Box sx={{
+                    minHeight: '60px',
+                    display: 'flex',
+                    flexDirection: 'column',
                     justifyContent: 'center',
                     mb: 1.5,
                   }}>
@@ -879,8 +879,8 @@ const HotelCardCarousel = () => {
                         </Typography>
                       </>
                     ) : (
-                      <Typography sx={{ 
-                        fontSize: "14px", 
+                      <Typography sx={{
+                        fontSize: "14px",
                         color: "#777",
                         minHeight: '60px',
                         display: 'flex',

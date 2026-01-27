@@ -62,7 +62,7 @@ import {
   RoomAmenities,
   StyledLabel,
 } from '../components/style';
-import { CDN_URL, MAPBOX_ACCESS_TOKEN } from '../services/Secret';
+import { CDN_URL, MAPBOX_ACCESS_TOKEN, s3BASEURL } from '../services/Secret';
 import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories, getHotelMeals } from '../services/services';
 import { ClearAll, Info, SquareFoot } from '@mui/icons-material';
 import { IconButton } from '@mui/material';
@@ -292,7 +292,7 @@ const getInventoryPriceForDate = (room: any, inventoryData: any[], checkDate: st
 };
 
 const HotelDetails: React.FC = () => {
-  const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+  const S3_BASE_URL = s3BASEURL;
   const CDN_BASE_URL = CDN_URL;
 
   const toCdn = (url?: string) => {

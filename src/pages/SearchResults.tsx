@@ -49,7 +49,7 @@ import {
 import SearchSection from "./Home Section/SearchSection";
 import dayjs from "dayjs";
 import { Helmet } from "react-helmet-async";
-import { CDN_URL } from "../services/Secret";
+import { CDN_URL, s3BASEURL } from "../services/Secret";
 
 // Pagination constants
 const ITEMS_PER_PAGE = 5;
@@ -181,18 +181,18 @@ const checkHourlyClosure = (
   checkinTime?: string
 ): { isClosed: boolean; closureReason: string } => {
   // Find active closures for this hotel
-  const hotelClosures = hourlyClosures.filter(closure => 
-    closure.hotelId === hotel.id && 
+  const hotelClosures = hourlyClosures.filter(closure =>
+    closure.hotelId === hotel.id &&
     closure.active === true
   );
-  
+
   if (hotelClosures.length === 0) {
     // If no closures set, hotel is OPEN all day
     return { isClosed: false, closureReason: '' };
   }
-  
+
   const selectedDate = dayjs(checkDate);
-  
+
   // Check each closure schedule
   for (const closure of hotelClosures) {
     // For recurring closures, check if selected date is on or after start date
@@ -200,7 +200,7 @@ const checkHourlyClosure = (
     if (selectedDate.isBefore(closureStartDate, 'day')) {
       continue; // This closure hasn't started yet
     }
-    
+
     // Get check-in time in minutes from midnight
     let checkinMinutes = 0;
     if (checkinTime) {
@@ -211,17 +211,17 @@ const checkHourlyClosure = (
       const now = dayjs();
       checkinMinutes = now.hour() * 60 + now.minute();
     }
-    
+
     // Get closure times in minutes from midnight
     const [startHour, startMinute] = closure.startTime.split(':').map(Number);
     const [endHour, endMinute] = closure.endTime.split(':').map(Number);
-    
+
     const closureStartMinutes = startHour * 60 + startMinute;
     const closureEndMinutes = endHour * 60 + endMinute;
-    
+
     // Check if time is WITHIN opening hours
     let isWithinOpeningHours = false;
-    
+
     if (closureStartMinutes <= closureEndMinutes) {
       // Normal opening hours (same day)
       // Hotel is OPEN if checkin time is BETWEEN start and end times
@@ -231,13 +231,13 @@ const checkHourlyClosure = (
       // Hotel is OPEN if checkin time is AFTER start time OR BEFORE end time
       isWithinOpeningHours = checkinMinutes >= closureStartMinutes || checkinMinutes < closureEndMinutes;
     }
-    
+
     // If checkin time is WITHIN opening hours, hotel is OPEN
     if (isWithinOpeningHours) {
       return { isClosed: false, closureReason: '' };
     }
   }
-  
+
   // If we get here, checkin time is NOT within any opening hours
   // Find the NEXT opening time to show in the message
   let nextOpeningTime = '';
@@ -245,10 +245,10 @@ const checkHourlyClosure = (
   if (hotelClosure) {
     nextOpeningTime = formatTime(hotelClosure.startTime);
   }
-  
-  return { 
-    isClosed: true, 
-    closureReason: `Hotel opens at ${nextOpeningTime}` 
+
+  return {
+    isClosed: true,
+    closureReason: `Hotel opens at ${nextOpeningTime}`
   };
 };
 
@@ -622,7 +622,7 @@ const HotelCard = ({
   inventoryData?: any[];
   hourlyClosures?: HourlyClosure[];
 }) => {
-  const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+  const S3_BASE_URL =s3BASEURL;
   const CDN_BASE_URL = CDN_URL;
 
   const toCdn = (url?: string) => {
@@ -1386,9 +1386,9 @@ const HotelCard = ({
                   mt: { xs: 1, sm: 0 },
                   marginRight: { xs: 3 },
                   display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    height: { xs: "44px", sm: "48px" },
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: { xs: "44px", sm: "48px" },
                 }}>
                   <Typography sx={{
                     fontSize: { xs: "14px", sm: "15px", md: "16px" },
@@ -1729,82 +1729,183 @@ const SearchResults = () => {
     };
   }, [location.search]);
 
+
+  // Function to detect if search is for location or hotel name
+  const detectSearchType = (searchTerm: string): 'hotel' | 'location' | 'mixed' => {
+    if (!searchTerm.trim()) return 'mixed';
+
+    const term = searchTerm.toLowerCase().trim();
+
+    // Common hotel-related keywords
+    const hotelKeywords = [
+      'hotel', 'inn', 'resort', 'villa', 'apartment', 'guest house',
+      'lodging', 'accommodation', 'stay', 'room', 'suite'
+    ];
+
+    // Common location-related keywords
+    const locationKeywords = [
+      'near', 'close to', 'beside', 'next to', 'opposite', 'adjacent',
+      'in', 'at', 'area', 'locality', 'road', 'street', 'lane', 'avenue'
+    ];
+
+    // Check for hotel name patterns
+    const isLikelyHotelName = hotelKeywords.some(keyword => term.includes(keyword)) ||
+      // Hotel names often start with capital letters or specific patterns
+      /^[A-Z][a-z]+\s+[A-Z][a-z]+/.test(searchTerm) ||
+      // Or contain words like "Hotel", "Resort", etc.
+      /Hotel\s+|Resort\s+|Inn\s+/i.test(searchTerm);
+
+    // Check for location patterns
+    const isLikelyLocation = locationKeywords.some(keyword => term.includes(keyword)) ||
+      // Contains common Bhubaneswar area names
+      /patia|sahid|jaydev|infocity|kiit|soa|chandrasekharpur|railway|airport/i.test(term) ||
+      // Contains "near" or "close to" patterns
+      /near\s+|close to\s+/i.test(term);
+
+    if (isLikelyHotelName && !isLikelyLocation) return 'hotel';
+    if (isLikelyLocation && !isLikelyHotelName) return 'location';
+
+    // If mixed or ambiguous, analyze further
+    const words = term.split(/\s+/);
+
+    // Count hotel vs location indicators
+    let hotelIndicators = 0;
+    let locationIndicators = 0;
+
+    words.forEach(word => {
+      if (hotelKeywords.includes(word)) hotelIndicators++;
+      if (locationKeywords.includes(word) ||
+        ['patia', 'bhubaneswar', 'bbsr', 'kiit', 'airport'].includes(word)) {
+        locationIndicators++;
+      }
+    });
+
+    if (hotelIndicators > locationIndicators) return 'hotel';
+    if (locationIndicators > hotelIndicators) return 'location';
+
+    return 'mixed'; // Default to mixed if unsure
+  };
+
   // Function to calculate location relevance score
-  const calculateLocationRelevance = (hotel: any, searchTerm: string): number => {
+  // SMART function that calculates relevance based on search type
+  const calculateSmartRelevance = (hotel: any, searchTerm: string, searchType: 'hotel' | 'location' | 'mixed'): {
+    score: number;
+    isExactHotelMatch: boolean;
+    isExactLocationMatch: boolean;
+  } => {
     let score = 0;
-    
-    if (!searchTerm.trim()) return score;
-    
+    let isExactHotelMatch = false;
+    let isExactLocationMatch = false;
+
+    if (!searchTerm.trim()) {
+      return { score: 0, isExactHotelMatch: false, isExactLocationMatch: false };
+    }
+
     const searchTermLower = searchTerm.toLowerCase().trim();
+    const hotelName = (hotel?.propertyName || "").toLowerCase();
     const hotelAddress = (hotel?.address || "").toLowerCase();
     const hotelCity = (hotel?.city || "").toLowerCase();
-    const hotelName = (hotel?.propertyName || "").toLowerCase();
     const hotelArea = (hotel?.area || "").toLowerCase();
-    
-    // Common Bhubaneswar areas/locations for better matching
-    const commonAreas = [
-      "patia", "sahid nagar", "jaydev vihar", "infocity", "rasulgarh", 
-      "vani vihar", "acharya vihar", "bapuji nagar", "baramunda", "bhubaneswar",
-      "bbsr", "railway station", "airport", "kiit", "soa", "sijua", "chandrasekharpur"
-    ];
-    
-    // Split search term into words
-    const searchWords = searchTermLower.split(/[,\s]+/).map(word => word.trim());
-    
-    // Check for exact area/location matches (highest priority)
+
+    const searchWords = searchTermLower.split(/[,\s]+/).map(word => word.trim()).filter(word => word.length > 0);
+
+    // ========== HOTEL NAME MATCHING (ALWAYS CHECKED, WEIGHT VARIES) ==========
+
+    // 1. EXACT hotel name match (ALWAYS HIGHEST PRIORITY regardless of search type)
+    if (hotelName === searchTermLower) {
+      score += 1000;
+      isExactHotelMatch = true;
+    }
+
+    // 2. Hotel name starts with search term
+    if (hotelName.startsWith(searchTermLower)) {
+      score += searchType === 'hotel' ? 500 : 300; // Higher weight for hotel searches
+    }
+
+    // 3. Hotel name contains search term
+    if (hotelName.includes(searchTermLower)) {
+      score += searchType === 'hotel' ? 400 : 200;
+    }
+
+    // 4. Word-by-word matching in hotel name
+    let nameWordMatches = 0;
     for (const word of searchWords) {
-      // Exact match in area field
-      if (hotelArea === word) {
-        score += 100;
-      }
-      
-      // Exact match in address
-      if (hotelAddress.includes(word)) {
-        score += 80;
-      }
-      
-      // Exact match in city
-      if (hotelCity === word) {
-        score += 60;
-      }
-      
-      // Partial match in address
-      if (hotelAddress.includes(word) && word.length > 2) {
-        score += 40;
-      }
-      
-      // Check for near/close to search location mentions
-      if (hotelAddress.includes(`near ${word}`) || hotelAddress.includes(`close to ${word}`)) {
-        score += 70;
-      }
-      
-      // Check for hotel name containing the area
-      if (hotelName.includes(word)) {
-        score += 30;
+      if (word.length > 1 && hotelName.includes(word)) {
+        nameWordMatches++;
+        score += searchType === 'hotel' ? 150 : 75;
       }
     }
-    
-    // Bonus for hotels in Bhubaneswar when searching for specific areas
-    if (hotelCity.includes("bhubaneswar") || hotelCity.includes("bbsr")) {
-      score += 10;
+
+    // 5. Bonus if ALL search words found in hotel name
+    if (nameWordMatches === searchWords.length && searchWords.length > 0) {
+      score += searchType === 'hotel' ? 200 : 100;
     }
-    
-    // Check for common area synonyms
-    if (searchTermLower.includes("patia")) {
-      if (hotelArea.includes("patia") || hotelAddress.includes("patia")) {
-        score += 120; // Extra high score for exact Patia match
+
+    // ========== LOCATION MATCHING (WEIGHT VARIES BASED ON SEARCH TYPE) ==========
+
+    // Location matching gets higher weight when search appears to be location-based
+    const locationWeightMultiplier = searchType === 'location' ? 3 :
+      searchType === 'mixed' ? 2 : 1;
+
+    // Address matching
+    for (const word of searchWords) {
+      if (word.length > 2) {
+        // Exact match in address
+        if (hotelAddress === word) {
+          score += 100 * locationWeightMultiplier;
+          isExactLocationMatch = true;
+        }
+
+        // Address contains word
+        if (hotelAddress.includes(word)) {
+          score += 40 * locationWeightMultiplier;
+        }
+
+        // Area matching
+        if (hotelArea === word) {
+          score += 120 * locationWeightMultiplier; // Area exact match gets high score
+          isExactLocationMatch = true;
+        }
+
+        if (hotelArea.includes(word)) {
+          score += 50 * locationWeightMultiplier;
+        }
+
+        // City matching
+        if (hotelCity === word) {
+          score += 80 * locationWeightMultiplier;
+        }
+
+        if (hotelCity.includes(word)) {
+          score += 30 * locationWeightMultiplier;
+        }
       }
     }
-    
-    // Check if search term contains "near" or "close to"
+
+    // Check for "near [location]" patterns
     if (searchTermLower.includes("near ") || searchTermLower.includes("close to ")) {
-      const nearLocation = searchTermLower.replace(/(near |close to )/, "").trim();
-      if (hotelAddress.includes(nearLocation) || hotelArea.includes(nearLocation)) {
-        score += 90;
+      const nearMatch = searchTermLower.replace(/(near |close to )/, "").trim();
+      if (hotelAddress.includes(nearMatch) || hotelArea.includes(nearMatch)) {
+        score += 200 * locationWeightMultiplier;
       }
     }
-    
-    return score;
+
+    // Bhubaneswar-specific location bonuses (only for location/mixed searches)
+    if (searchType !== 'hotel') {
+      if (hotelCity.includes("bhubaneswar") || hotelCity.includes("bbsr")) {
+        score += 20;
+      }
+
+      // Common Bhubaneswar areas boost
+      const commonBbsrAreas = ["patia", "sahid nagar", "jaydev vihar", "infocity", "chandrasekharpur"];
+      for (const area of commonBbsrAreas) {
+        if (searchTermLower.includes(area) && (hotelArea.includes(area) || hotelAddress.includes(area))) {
+          score += 150 * locationWeightMultiplier;
+        }
+      }
+    }
+
+    return { score, isExactHotelMatch, isExactLocationMatch };
   };
 
   // Filter data based on search parameters
@@ -1878,78 +1979,42 @@ const SearchResults = () => {
       });
 
       // Calculate location relevance score for ALL hotels
+      // Calculate smart relevance score for ALL hotels
       filteredHotels = filteredHotels.map((hotel: any) => {
-        let relevanceScore = 0;
-        let isExactMatch = false;
-        
-        // Calculate location relevance (NEW: Enhanced location scoring)
-        const locationRelevanceScore = calculateLocationRelevance(hotel, locationFilter);
-        relevanceScore += locationRelevanceScore;
-        
         if (locationFilter.trim() !== "") {
-          const searchTerm = locationFilter.toLowerCase().trim();
-          const searchText = (hotel.propertyName || hotel.address || hotel.city || hotel.area || "").toLowerCase();
-          const filterWords = searchTerm.split(/[,\s]+/).map((word) => word.trim());
+          // Detect what type of search this is
+          const searchType = detectSearchType(locationFilter);
 
-          // Calculate text relevance score
-          filterWords.forEach(word => {
-            if (searchText.includes(word)) {
-              relevanceScore += 5;
+          console.log(`🔍 Search Type Detected: "${locationFilter}" → ${searchType}`);
 
-              // Exact match in property name gets highest priority
-              if (hotel.propertyName?.toLowerCase().includes(word)) {
-                relevanceScore += 20;
-              }
+          // Calculate smart relevance based on search type
+          const { score, isExactHotelMatch, isExactLocationMatch } =
+            calculateSmartRelevance(hotel, locationFilter, searchType);
 
-              // Exact match in address gets medium priority
-              if (hotel.address?.toLowerCase().includes(word)) {
-                relevanceScore += 15;
-              }
+          // Check hotel availability
+          const hotelRoomAvailable = hotel?.roomAvailable || "Available";
+          const isAvailable = hotelRoomAvailable !== "Unavailable";
 
-              // Check for exact matches
-              if (searchText === word ||
-                hotel.propertyName?.toLowerCase() === word ||
-                hotel.address?.toLowerCase() === word) {
-                relevanceScore += 30;
-                isExactMatch = true;
-              }
-
-              // Check if word starts with search term
-              if (hotel.propertyName?.toLowerCase().startsWith(word)) {
-                relevanceScore += 25;
-              }
-
-              // Check if address starts with search term
-              if (hotel.address?.toLowerCase().startsWith(word)) {
-                relevanceScore += 20;
-              }
-            }
-          });
-
-          // Bonus for hotels that match the entire search phrase
-          if (searchText.includes(searchTerm)) {
-            relevanceScore += 40;
-          }
-
-          // Check if hotel name contains search term
-          if (hotel.propertyName?.toLowerCase().includes(searchTerm)) {
-            relevanceScore += 35;
-          }
+          return {
+            ...hotel,
+            _relevanceScore: score,
+            _isExactHotelMatch: isExactHotelMatch,
+            _isExactLocationMatch: isExactLocationMatch,
+            _searchType: searchType,
+            _isAvailable: isAvailable,
+          };
         }
 
-        // Check hotel availability for sorting
+        // Default if no search term
         const hotelRoomAvailable = hotel?.roomAvailable || "Available";
         const isAvailable = hotelRoomAvailable !== "Unavailable";
 
-        // Base score for all hotels
-        const baseScore = 1;
-
         return {
           ...hotel,
-          _relevanceScore: baseScore + relevanceScore,
-          _locationRelevanceScore: locationRelevanceScore, // NEW: Store location score separately
-          _isExactMatch: isExactMatch,
-          _hasLocationMatch: locationRelevanceScore > 0, // NEW: Check if has location match
+          _relevanceScore: 0,
+          _isExactHotelMatch: false,
+          _isExactLocationMatch: false,
+          _searchType: 'mixed',
           _isAvailable: isAvailable,
         };
       });

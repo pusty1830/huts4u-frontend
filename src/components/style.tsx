@@ -21,7 +21,7 @@ import {
 } from "@mui/material";
 import color from "./color";
 import { useState } from "react";
-import { CDN_URL } from "../services/Secret";
+import { CDN_URL, s3BASEURL } from "../services/Secret";
 
 export const BoxStyle = {
   p: 2,
@@ -257,7 +257,7 @@ interface ImageGridProps {
 }
 
 export const ImageGrid: React.FC<ImageGridProps> = ({ propertyImages }) => {
-  const S3_BASE_URL = "https://huts44u.s3.ap-south-1.amazonaws.com";
+  const S3_BASE_URL = s3BASEURL;
   const CDN_BASE_URL = CDN_URL; 
 
   const toCdn = (url?: string) => {
