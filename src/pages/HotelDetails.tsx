@@ -66,6 +66,7 @@ import { CDN_URL, MAPBOX_ACCESS_TOKEN, s3BASEURL } from '../services/Secret';
 import { getAllRatings, getAllHotels, getMyAllHotelswithBelongsTo, getAllInventories, getHotelMeals } from '../services/services';
 import { ClearAll, Info, SquareFoot } from '@mui/icons-material';
 import { IconButton } from '@mui/material';
+import { calculatePriceBreakdown } from '../components/Payments/Calculation';
 
 /**
  * calculatePriceBreakdown (simplified - no discount)
@@ -79,57 +80,7 @@ import { IconButton } from '@mui/material';
  * - gstTotal = gstOnBase + gstOnPlatform + gatewayFee + gstOnGateway
  * - finalPrice = base + platformFee + gstOnBase + gstOnPlatform + gatewayFee + gstOnGateway
  */
-const calculatePriceBreakdown = (basePrice: number) => {
-  const numericBase = Number(basePrice) || 0;
 
-  if (!numericBase || numericBase <= 0) {
-    return {
-      basePrice: 0,
-      platformFee: 0,
-      gstOnBase: 0,
-      gstOnPlatform: 0,
-      gstTotal: 0,
-      gatewayFee: 0,
-      finalPrice: 0,
-    };
-  }
-
-  // 5% GST on base
-  const gstOnBase = numericBase * 0.05;
-
-  // platform fee = 13% on (base + gstOnBase)
-  const platformFee = (numericBase + gstOnBase) * 0.13;
-
-  // GST on platform (18%)
-  const gstOnPlatform = platformFee * 0.18;
-
-  // amount that gateway charges apply to (base + gstOnBase + platformFee + gstOnPlatform)
-  const amountBeforeGateway =
-    numericBase + gstOnBase + platformFee + gstOnPlatform;
-
-  // gateway fee (2%)
-  const gatewayFee = amountBeforeGateway * 0.02;
-
-  // GST on gateway fee (18%)
-  const gstOnGateway = gatewayFee * 0.18;
-
-  // combined GST & fees
-  const gstTotal = gstOnBase + gstOnPlatform + gatewayFee + gstOnGateway;
-
-  // final total
-  const finalPrice =
-    numericBase + platformFee + gstOnBase + gstOnPlatform + gatewayFee + gstOnGateway;
-
-  return {
-    basePrice: numericBase,
-    platformFee,
-    gstOnBase,
-    gstOnPlatform,
-    gstTotal,
-    gatewayFee,
-    finalPrice,
-  };
-};
 
 // Function to calculate average rating for a hotel
 const calculateAverageRating = (ratings: any[]) => {
@@ -452,40 +403,7 @@ const HotelDetails: React.FC = () => {
   };
 
   // Add a debug function to check meal plan data
-  const debugMealPlans = () => {
-    console.log('=== MEAL PLANS DEBUG ===');
-    console.log('All meal plans:', mealPlans);
-    console.log('Hotel ID:', hotel.id);
 
-    hotel.rooms.forEach((room: any) => {
-      const roomMealPlans = getMealPlansForRoom(room.id);
-      console.log(`Room ${room.id} (${room.roomCategory}) meal plans:`, roomMealPlans);
-
-      roomMealPlans.forEach((meal: any, index: number) => {
-        console.log(`  Meal ${index + 1}:`, {
-          id: meal.id,
-          hotelId: meal.hotelId,
-          roomId: meal.roomId,
-          mealType: meal.mealType,
-          mealPlan: meal.mealPlan,
-          meal_type: meal.meal_type,
-          plan: meal.plan,
-          price: meal.price,
-          rate: meal.rate,
-          cost: meal.cost,
-          allFields: Object.keys(meal)
-        });
-      });
-    });
-    console.log('=== END DEBUG ===');
-  };
-
-  // Add a useEffect to debug when meal plans load
-  useEffect(() => {
-    if (!loadingMealPlans && mealPlans.length > 0) {
-      debugMealPlans();
-    }
-  }, [loadingMealPlans, mealPlans]);
 
   // Get meal plan icon
   const getMealPlanIcon = (mealPlanType: string) => {

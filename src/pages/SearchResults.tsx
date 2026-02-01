@@ -50,6 +50,7 @@ import SearchSection from "./Home Section/SearchSection";
 import dayjs from "dayjs";
 import { Helmet } from "react-helmet-async";
 import { CDN_URL, s3BASEURL } from "../services/Secret";
+import { calculatePriceBreakdown } from "../components/Payments/Calculation";
 
 // Pagination constants
 const ITEMS_PER_PAGE = 5;
@@ -270,7 +271,6 @@ const getHotelStatus = (
   if (bookingType === "hourly") {
     const closureCheck = checkHourlyClosure(hotel, hourlyClosures, checkDate, checkinTime);
     if (closureCheck.isClosed) {
-      console.log(`   ❌ Hotel has hourly closure: ${closureCheck.closureReason}`);
       return {
         isAvailable: false,
         status: 'Closed',
@@ -279,14 +279,11 @@ const getHotelStatus = (
     }
   }
 
-  console.log(`🔍 Checking hotel: ${hotel?.propertyName}`);
-  console.log(`   - Hotel roomAvailable: ${hotel?.roomAvailable || "Available"}`);
-  console.log(`   - Room status: ${room?.status?.toLowerCase()}`);
+  
 
   // SECOND: Check if hotel roomAvailable is "Unavailable" - show as "Sold Out"
   const hotelRoomAvailable = hotel?.roomAvailable || "Available";
   if (hotelRoomAvailable === "Unavailable") {
-    console.log(`   ❌ Hotel marked as Unavailable in roomAvailable field`);
     return {
       isAvailable: false,
       status: 'Sold Out',
@@ -299,7 +296,7 @@ const getHotelStatus = (
   const isStatusAvailable = roomStatus === "available" || roomStatus === "active";
 
   if (!isStatusAvailable) {
-    console.log(`   ❌ Room status not available: ${roomStatus}`);
+   
     return {
       isAvailable: false,
       status: 'Sold Out',
@@ -308,7 +305,7 @@ const getHotelStatus = (
   }
 
   const checkDay = checkDate ? dayjs(checkDate).format('YYYY-MM-DD') : '';
-  console.log(`   - Check date: ${checkDay}`);
+  
 
   if (!checkDay) {
     return {
@@ -323,8 +320,7 @@ const getHotelStatus = (
   ) : null;
 
   if (dayInventory) {
-    console.log(`   - Found inventory for date`);
-    console.log(`   - Inventory isBlocked: ${dayInventory.isBlocked}`);
+  
 
     if (dayInventory.isBlocked) {
       return {
@@ -339,15 +335,11 @@ const getHotelStatus = (
       const sixHourAvailable = dayInventory.sixHourAvailable > dayInventory.sixHourBooked;
       const twelveHourAvailable = dayInventory.twelveHourAvailable > dayInventory.twelveHourBooked;
 
-      console.log(`   - Hourly availability check:`);
-      console.log(`     - 3h: ${dayInventory.threeHourAvailable}/${dayInventory.threeHourBooked} = ${threeHourAvailable}`);
-      console.log(`     - 6h: ${dayInventory.sixHourAvailable}/${dayInventory.sixHourBooked} = ${sixHourAvailable}`);
-      console.log(`     - 12h: ${dayInventory.twelveHourAvailable}/${dayInventory.twelveHourBooked} = ${twelveHourAvailable}`);
-
+     
       const hasHourlyAvailability = threeHourAvailable || sixHourAvailable || twelveHourAvailable;
 
       if (!hasHourlyAvailability) {
-        console.log(`   ❌ No hourly slots available`);
+      
         return {
           isAvailable: false,
           status: 'Sold Out',
@@ -356,8 +348,7 @@ const getHotelStatus = (
       }
     } else {
       const overnightAvailable = dayInventory.overnightAvailable > dayInventory.overnightBooked;
-      console.log(`   - Overnight availability: ${dayInventory.overnightAvailable}/${dayInventory.overnightBooked} = ${overnightAvailable}`);
-
+     
       if (!overnightAvailable) {
         return {
           isAvailable: false,
@@ -366,11 +357,9 @@ const getHotelStatus = (
         };
       }
     }
-  } else {
-    console.log(`   - No inventory found for date, assuming available`);
-  }
+  } 
 
-  console.log(`   ✅ Hotel is available`);
+ 
   return {
     isAvailable: true,
     status: 'Available',
@@ -442,43 +431,7 @@ const getBaseRate = (hotel: any, inventoryData: any[] = [], checkDate: string, b
 };
 
 // 💰 Price breakdown per single unit
-export const calculatePriceBreakdown = (basePrice: number) => {
-  const numericBase = Number(basePrice) || 0;
 
-  if (!numericBase || numericBase <= 0) {
-    return {
-      basePrice: 0,
-      platformFee: 0,
-      gstOnBase: 0,
-      gstOnPlatform: 0,
-      gatewayFee: 0,
-      gstOnGateway: 0,
-      gstTotal: 0,
-      finalPrice: 0,
-    };
-  }
-
-  const gstOnBase = numericBase * 0.05;
-  const platformFeeBase = numericBase + gstOnBase;
-  const platformFee = platformFeeBase * 0.13;
-  const gstOnPlatform = platformFee * 0.18;
-  const amountBeforeGateway = numericBase + gstOnBase + platformFee + gstOnPlatform;
-  const gatewayFee = amountBeforeGateway * 0.02;
-  const gstOnGateway = gatewayFee * 0.18;
-  const gstTotal = gstOnBase + gstOnPlatform + gstOnGateway + gatewayFee;
-  const finalPrice = numericBase + platformFee + gstTotal;
-
-  return {
-    basePrice: numericBase,
-    platformFee,
-    gstOnBase,
-    gstOnPlatform,
-    gatewayFee,
-    gstOnGateway,
-    gstTotal,
-    finalPrice,
-  };
-};
 
 // helper to format INR
 const formatINR = (val: number) =>
@@ -584,7 +537,7 @@ const fetchHourlyClosures = async (): Promise<HourlyClosure[]> => {
       closuresData = response.data.data;
     }
 
-    console.log(`✅ Fetched ${closuresData.length} hourly closures`);
+    
     return closuresData;
   } catch (error) {
     console.error('Error fetching hourly closures:', error);
@@ -1563,7 +1516,7 @@ const SearchResults = () => {
 
         // Check cache first
         if (isCacheValid() && dataCache.ratings && dataCache.hourlyClosures) {
-          console.log("Using cached data");
+         
           setMergedData(dataCache.hotels);
           setAllRatings(dataCache.ratings);
           setHourlyClosures(dataCache.hourlyClosures);
@@ -1582,7 +1535,6 @@ const SearchResults = () => {
 
         const hotelRes = await getAllHotels(hotelPayload);
         const hotelData = hotelRes?.data?.data?.rows || [];
-        console.log("Total hotels from API:", hotelData.length);
         const hotelIds = hotelData.map((hotel: any) => hotel.id);
 
         setHotelIdList(hotelIds);
@@ -1601,8 +1553,6 @@ const SearchResults = () => {
         const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
         const endIdx = startIdx + ITEMS_PER_PAGE;
         const firstBatchIds = hotelIds.slice(startIdx, endIdx);
-
-        console.log(`Fetching first batch: ${firstBatchIds.length} hotels`);
 
         const firstBatchHotels = await fetchHotelBatch(firstBatchIds, 0, firstBatchIds.length);
 
@@ -1644,8 +1594,7 @@ const SearchResults = () => {
           const loadedIds = new Set(firstBatchIds);
           const remainingIds = hotelIds.filter((id: any) => !loadedIds.has(id));
 
-          console.log(`Background loading: ${remainingIds.length} hotels (excluding ${firstBatchIds.length} already loaded)`);
-
+       
           const totalBatches = Math.ceil(remainingIds.length / BATCH_SIZE);
 
           for (let i = 0; i < totalBatches; i++) {
@@ -1654,8 +1603,7 @@ const SearchResults = () => {
             const batchIds = remainingIds.slice(batchStart, batchEnd);
 
             try {
-              console.log(`Fetching background batch ${i + 1}/${totalBatches}: ${batchIds.length} hotels`);
-              const batchHotels = await fetchHotelBatch(batchIds, 0, batchIds.length);
+               const batchHotels = await fetchHotelBatch(batchIds, 0, batchIds.length);
 
               if (batchHotels.length > 0) {
                 // Combine with ratings
@@ -1682,7 +1630,7 @@ const SearchResults = () => {
                 // Update merged data with new batch
                 setMergedData(prev => [...prev, ...batchCombined]);
 
-                console.log(`✅ Added ${batchCombined.length} hotels. `);
+              
 
                 // Update cache
                 dataCache.hotels = [...dataCache.hotels, ...batchCombined];
@@ -1694,8 +1642,6 @@ const SearchResults = () => {
                   batchIds.forEach((id: any) => newSet.add(id));
                   return newSet;
                 });
-              } else {
-                console.log(`⚠️ Batch ${i + 1} returned 0 hotels`);
               }
 
               // Small delay between batches
@@ -1985,8 +1931,7 @@ const SearchResults = () => {
           // Detect what type of search this is
           const searchType = detectSearchType(locationFilter);
 
-          console.log(`🔍 Search Type Detected: "${locationFilter}" → ${searchType}`);
-
+      
           // Calculate smart relevance based on search type
           const { score, isExactHotelMatch, isExactLocationMatch } =
             calculateSmartRelevance(hotel, locationFilter, searchType);
@@ -2083,25 +2028,7 @@ const SearchResults = () => {
             totalGst: +(breakdown.gstTotal * multiplier),
           },
         };
-      });
-
-      // NEW: Group hotels by location relevance for debugging
-      const highLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore >= 50);
-      const mediumLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore >= 20 && h._locationRelevanceScore < 50);
-      const lowLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore < 20 && h._locationRelevanceScore > 0);
-      const noLocationRelevance = hotelsWithPrices.filter(h => h._locationRelevanceScore === 0);
-
-      console.log('📍 Location Relevance Analysis:');
-      console.log(`  🔥 High relevance (>=50): ${highLocationRelevance.length} hotels`);
-      console.log(`  ⚡ Medium relevance (20-49): ${mediumLocationRelevance.length} hotels`);
-      console.log(`  🔍 Low relevance (1-19): ${lowLocationRelevance.length} hotels`);
-      console.log(`  ❌ No relevance: ${noLocationRelevance.length} hotels`);
-
-      // Log top hotels with location scores
-      hotelsWithPrices.slice(0, 5).forEach((hotel, index) => {
-        console.log(`${index + 1}. ${hotel.propertyName} - Location Score: ${hotel._locationRelevanceScore} - Address: ${hotel.address}`);
-      });
-
+      });     
       return hotelsWithPrices;
     };
 
@@ -2111,7 +2038,7 @@ const SearchResults = () => {
 
       // Calculate pagination
       const totalItems = filtered.length;
-      console.log(`Total items for pagination: ${totalItems}`);
+    
       const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
       setTotalPages(totalPages);
 

@@ -17,6 +17,7 @@ import color from "../components/color";
 import { getAllMyBookings } from "../services/services";
 import { toast } from "react-toastify";
 import { getUserName } from "../services/axiosClient";
+import { round2, calculateInvoiceBreakdown } from "../components/Payments/Calculation";
 
 // small helpers
 const safeNumber = (v: any): number => {
@@ -32,67 +33,7 @@ const normalizeAmountToRupees = (val: any) => {
   return n;
 };
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
-// Calculate invoice breakdown based on the example image structure
-const calculateInvoiceBreakdown = (finalAmount: number) => {
-  const discountPercentage = 0.05; // 5% discount
-  const serviceChargePercentage = 0.13; // 13% of Base Price WITH GST
-  const convenienceFeePercentage = 0.02; // 2% convenience fee
-
-  // Step 1: Calculate subtotal before discount
-  const subtotalBeforeDiscount = round2(finalAmount / (1 - discountPercentage));
-  const discountAmount = round2(subtotalBeforeDiscount * discountPercentage);
-
-  // Step 2: We need to find Base Price (x) that satisfies:
-  const basePriceExclGST = round2(subtotalBeforeDiscount / 1.23965);
-
-  // Now calculate all components
-  // Base Price with 5% GST
-  const baseCGST = round2(basePriceExclGST * 0.025);
-  const baseSGST = round2(basePriceExclGST * 0.025);
-  const baseTotal = round2(basePriceExclGST + baseCGST + baseSGST);
-
-  // Service Charges (13% of Base Total) with 18% GST
-  const serviceChargesExclGST = round2(baseTotal * serviceChargePercentage);
-  const serviceCGST = round2(serviceChargesExclGST * 0.09);
-  const serviceSGST = round2(serviceChargesExclGST * 0.09);
-  const serviceTotal = round2(serviceChargesExclGST + serviceCGST + serviceSGST);
-
-  // Convenience Fee (2% of core) with 18% GST
-  const coreTotal = baseTotal + serviceTotal;
-  const convenienceFeeExclGST = round2(coreTotal * convenienceFeePercentage);
-  const convenienceCGST = round2(convenienceFeeExclGST * 0.09);
-  const convenienceSGST = round2(convenienceFeeExclGST * 0.09);
-  const convenienceTotal = round2(convenienceFeeExclGST + convenienceCGST + convenienceSGST);
-
-  // Recalculate subtotal to ensure accuracy
-  const calculatedSubtotal = round2(baseTotal + serviceTotal + convenienceTotal);
-  const calculatedDiscount = round2(calculatedSubtotal * discountPercentage);
-  const calculatedFinal = round2(calculatedSubtotal - calculatedDiscount);
-
-  return {
-    basePrice: basePriceExclGST,
-    baseCGST: baseCGST,
-    baseSGST: baseSGST,
-    baseTotal: baseTotal,
-    serviceCharges: serviceChargesExclGST,
-    serviceCGST: serviceCGST,
-    serviceSGST: serviceSGST,
-    serviceTotal: serviceTotal,
-    convenienceFee: convenienceFeeExclGST,
-    convenienceCGST: convenienceCGST,
-    convenienceSGST: convenienceSGST,
-    convenienceTotal: convenienceTotal,
-    subtotalBeforeDiscount: calculatedSubtotal,
-    discountAmount: calculatedDiscount,
-    finalAmount: calculatedFinal,
-    totalCGST: round2(baseCGST + serviceCGST + convenienceCGST),
-    totalSGST: round2(baseSGST + serviceSGST + convenienceSGST),
-    totalGST: round2(baseCGST + baseSGST + serviceCGST + serviceSGST + convenienceCGST + convenienceSGST),
-    totalTaxable: round2(basePriceExclGST + serviceChargesExclGST + convenienceFeeExclGST),
-  };
-};
 
 const numberToWords = (amount: number) => {
   const single = [

@@ -19,6 +19,7 @@ import ContactUs from "./pages/ContactUs";
 import UserLogin from "./pages/UserLogin";
 import BillingSection from "./pages/BillingSection";
 import NotFound from "./pages/NotFound";
+import PaymentReturn from "./pages/PaymentReturn";
 
 // Lazy-loaded pages (large or less frequent)
 const HomePage = React.lazy(() => import("./pages/HomePage"));
@@ -86,6 +87,7 @@ const App: React.FC = () => {
               path="/account"
               element={<PrivateRoute1 component={AccountPage} allowedRoles={["User"]} />}
             />
+            <Route path="/payment/return" element={<PaymentReturn />} />
             <Route
               path="/booking/:id"
               element={<PrivateRoute1 component={BookingDetails} allowedRoles={["User"]} />}

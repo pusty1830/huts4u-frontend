@@ -60,6 +60,14 @@ import "react-phone-input-2/lib/style.css";
 
 // Import GST APIs
 import { createGST, getAllGSTByUserId, deleteGST } from "../services/services";
+import { calculatePriceBreakdown1 } from "../components/Payments/Calculation";
+
+// Declare Cashfree on window object
+declare global {
+  interface Window {
+    Cashfree: any;
+  }
+}
 
 // UPDATED VALIDATION SCHEMA WITH PHONE VALIDATION
 const validationSchema = Yup.object({
@@ -74,105 +82,7 @@ const validationSchema = Yup.object({
     }),
 });
 
-// ---------------- UPDATED PRICE CALCULATION WITH MEAL PLAN & DISCOUNTS ----------------
-export const calculatePriceBreakdown = (
-  basePrice: number,
-  mealPlanPrice: number = 0,
-  discounts: {
-    hotelDiscountValue: number;
-    hotelDiscountType: 'percentage' | 'flat' | null;
-    couponApplied: boolean;
-    couponValue: number;
-  }
-) => {
-  const numericBase = Number(basePrice) || 0;
-  const numericMeal = Number(mealPlanPrice) || 0;
 
-  if (!numericBase || numericBase <= 0) {
-    return {
-      basePrice: 0,
-      mealPlanPrice: 0,
-      gstOnBase: 0,
-      platformFee: 0,
-      gstOnPlatform: 0,
-      convenienceFee: 0,
-      gstOnConvenience: 0,
-      totalWithoutDiscount: 0,
-      hotelDiscount: 0,
-      couponDiscount: 0,
-      totalDiscount: 0,
-      finalPrice: 0,
-    };
-  }
-
-  // Total taxable value (base + meal plan)
-  const totalTaxableValue = numericBase + numericMeal;
-
-  // 1. GST on base + meal (5%)
-  const gstOnBase = totalTaxableValue * 0.05;
-
-  // Amount after base GST
-  const amountAfterBaseGst = totalTaxableValue + gstOnBase;
-
-  // 2. Platform fee (13% on base + GST)
-  const platformFee = amountAfterBaseGst * 0.13;
-
-  // 3. GST on platform fee (18%)
-  const gstOnPlatform = platformFee * 0.18;
-
-  // 4. Subtotal before convenience
-  const subtotalBeforeConvenience =
-    totalTaxableValue + gstOnBase + platformFee + gstOnPlatform;
-
-  // 5. Convenience fee (2% on subtotal)
-  const convenienceFee = subtotalBeforeConvenience * 0.02;
-
-  // 6. GST on convenience fee (18%)
-  const gstOnConvenience = convenienceFee * 0.18;
-
-  // 7. Total without discount
-  const totalWithoutDiscount =
-    subtotalBeforeConvenience + convenienceFee + gstOnConvenience;
-
-  // Calculate hotel discount
-  let hotelDiscount = 0;
-  if (discounts.hotelDiscountValue > 0 && discounts.hotelDiscountType) {
-    if (discounts.hotelDiscountType === 'percentage') {
-      // Percentage discount on total without discount
-      hotelDiscount = totalWithoutDiscount * (discounts.hotelDiscountValue / 100);
-    } else {
-      // Flat discount
-      hotelDiscount = Math.min(discounts.hotelDiscountValue, totalWithoutDiscount);
-    }
-  }
-
-  // Calculate coupon discount (5% on total without discount)
-  let couponDiscount = 0;
-  if (discounts.couponApplied) {
-    couponDiscount = totalWithoutDiscount * discounts.couponValue;
-  }
-
-  // Total discount
-  const totalDiscount = hotelDiscount + couponDiscount;
-
-  // Final price = total without discount - discounts
-  const finalPrice = totalWithoutDiscount - totalDiscount;
-
-  return {
-    basePrice: numericBase,
-    mealPlanPrice: numericMeal,
-    gstOnBase,
-    platformFee,
-    gstOnPlatform,
-    convenienceFee,
-    gstOnConvenience,
-    totalWithoutDiscount,
-    hotelDiscount,
-    couponDiscount,
-    totalDiscount,
-    finalPrice,
-  };
-};
 
 // ========== GUEST DISTRIBUTION AND EXTRA CHARGE CALCULATION ==========
 const distributeGuestsToRooms = (
@@ -255,7 +165,7 @@ const BookingSummary = () => {
   const inventoryData = location.state?.inventoryData || [];
 
   const queryParams = new URLSearchParams(location.search);
-  console.log("BookingSummary - location:", location.state);
+ 
 
   const initialBookingType = queryParams.get("bookingType");
   const initialCheckinTime = queryParams.get("time");
@@ -273,7 +183,7 @@ const BookingSummary = () => {
   const [rooms, setRooms] = useState(initialRooms || "1");
   const [adults, setAdults] = useState(initialAdults || "1");
   const [children, setChildren] = useState(initialChildren || "0");
-
+  const [isLoadingPayment, setIsLoadingPayment] = useState(false);
   // State for editing
   const [editingCheckin, setEditingCheckin] = useState(false);
   const [editingCheckout, setEditingCheckout] = useState(false);
@@ -566,7 +476,6 @@ const BookingSummary = () => {
         loadUserGSTRecords(userData._id);
       }
     } catch (err) {
-      console.log("Error loading profile:", err);
       toast.error("Failed to load user profile");
     }
   };
@@ -979,7 +888,7 @@ const BookingSummary = () => {
       const totalBasePrice = (calculatedPrice.basePrice || 0) + totalMealPlanPrice;
 
       // Calculate breakdown with both discounts
-      const breakdown = calculatePriceBreakdown(
+      const breakdown = calculatePriceBreakdown1(
         calculatedPrice.basePrice || 0,
         totalMealPlanPrice,
         {
@@ -1019,7 +928,7 @@ const BookingSummary = () => {
     const totalMealPlanPrice = mealPlanPrice * requiredRooms * (bookingType === "hourly" ? 1 : nights);
 
     // Calculate breakdown with both discounts
-    const breakdown = calculatePriceBreakdown(
+    const breakdown = calculatePriceBreakdown1(
       totalBasePrice,
       totalMealPlanPrice,
       {
@@ -1075,7 +984,7 @@ const BookingSummary = () => {
   const convenienceFeeInclGst = convenienceFee + gstOnConvenience;
   const grandTotal = payableAfterDiscount;
 
-  // STEP 3: Handle payment with GST data in payload - USE MYSQL ID FOR HOTEL
+  // In your BookingSummary.tsx, replace the entire handlePayment function:
   const handlePayment = async () => {
     try {
       if (!grandTotal || grandTotal <= 0) {
@@ -1083,19 +992,18 @@ const BookingSummary = () => {
         return;
       }
 
-      // Get hotel ID - prefer MySQL id over MongoDB _id
       const hotelId = hotel?.id || hotel?._id;
       if (!hotelId) {
         toast.error("Hotel information is missing");
         return;
       }
 
-      // Prepare GST data for booking payload
+      // ================= GST =================
       let gstDataForBooking = null;
       if (gstVerificationStatus === "verified" && gstinNumber) {
         gstDataForBooking = {
           gstNumber: gstinNumber,
-          legalName: legalName,
+          legalName,
           address: gstAddress,
           verified: true,
           gstRecordId: selectedGSTRecord?.id || selectedGSTRecord?._id,
@@ -1103,35 +1011,82 @@ const BookingSummary = () => {
         };
       }
 
-      // Prepare discount data for booking payload
+      // ================= DISCOUNTS =================
       const discountData = {
-        hotelDiscount: hotelDiscountApplied ? {
-          discountId: hotelDiscount?.id,
-          discountType: hotelDiscount?.discountType,
-          discountValue: hotelDiscount?.discountValue,
-          discountAmount: hotelDiscountAmount
-        } : null,
-        couponDiscount: couponApplied ? {
-          couponCode,
-          discountValue: 0.05,
-          discountAmount: couponDiscount
-        } : null,
-        totalDiscount
+        hotelDiscount: hotelDiscountApplied
+          ? {
+            discountId: hotelDiscount?.id,
+            discountType: hotelDiscount?.discountType,
+            discountValue: hotelDiscount?.discountValue,
+            discountAmount: hotelDiscountAmount,
+          }
+          : null,
+        couponDiscount: couponApplied
+          ? {
+            couponCode,
+            discountValue: 0.05,
+            discountAmount: couponDiscount,
+          }
+          : null,
+        totalDiscount,
       };
 
-      const payLoad = {
+      // ================= PRICE BREAKDOWN =================
+      const pricingDetails = {
+        ...priceBreakdown,
+        nights,
+        rooms: requiredRooms.toString(),
+        adults,
+        children,
+        bookingType,
+        checkinDate,
+        checkOutDate,
+        checkinTime,
+        slotDuration,
+        extraGuestCount,
+        extraGuestCharge,
+        guestsPerRoom,
+        inventoryData,
+        unitBase: inventoryUnitBase,
+        mealPlan,
+        mealPlanPrice: totalMealPlan,
+        mealPlanDescription: mealDesc,
+        finalPrice: payableAfterDiscount,
+        grandTotal: Math.round(grandTotal),
+      };
+
+      // ================= GUEST INFO =================
+      const guestInfo = {
+        name: formik.values.name,
+        email: formik.values.email || "guest@huts4u.com",
+        phoneNumber: formik.values.phoneNumber,
+      };
+
+      // ================= TIMING =================
+      const timing = calculateCheckoutTime();
+
+      // ================= PAYLOAD =================
+      const payload = {
         amount: Math.round(grandTotal),
-        currency: "INR",
-        // Include GST and discount data in the order payload
-        metadata: {
+        order_currency: "INR",
+        customerName: formik.values.name,
+        customerEmail: formik.values.email || "guest@huts4u.com",
+        customerPhone: formik.values.phoneNumber,
+
+        order_meta: {
+          return_url: `${window.location.origin}/payment/return`,
+        },
+
+        order_note: "Hotel Booking",
+
+        booking_data: {
           gstDetails: gstDataForBooking,
           discountDetails: discountData,
           bookingType,
-          hotelId: hotelId, // Use the determined hotel ID
-          roomId: room?.id || room?._id, // Use room ID (MySQL or MongoDB)
+          hotelId,
+          roomId: room?.id || room?._id,
           mealPlan,
           mealPlanPrice: totalMealPlan,
-          mealPlanDescription: mealDesc,
           checkinDate,
           checkOutDate,
           checkinTime,
@@ -1142,29 +1097,112 @@ const BookingSummary = () => {
           extraGuestCount,
           extraGuestCharge,
           guestsPerRoom,
-          bookingDetails: {
-            propertyName: hotel?.propertyName,
-            roomCategory: room?.roomCategory,
-            address: hotel?.address,
-            checkInDate: dayjs(checkinDate).format("DD MMM YYYY"),
-            checkOutDate: dayjs(checkOutDate).format("DD MMM YYYY"),
-            duration: bookingType === "hourly" ? `${slotDuration} hours` : `${nights} nights`,
-          }
-        }
+        },
       };
 
-      const response = await createOrder(payLoad);
+      setIsLoadingPayment(true);
 
-      if (response?.data) {
-        setOrderDetails(response.data);
-      } else {
-        toast.error("Payment failed. Please try again.");
+      // ================= CREATE ORDER =================
+      const response = await createOrder(payload);
+
+      const { orderId, paymentSessionId } = response?.data?.data || {};
+
+      if (!orderId || !paymentSessionId) {
+        toast.error("Failed to create Cashfree order");
+        return;
       }
-    } catch (error) {
-      console.error("Error during payment:", error);
+
+      // ================= COMPLETE BOOKING DATA TO STORE =================
+      const completeBookingData = {
+        orderId,
+        paymentSessionId,
+        orderDetails: response?.data?.data, // Store full order details if needed
+        bookingDetails: {
+          // All the data you need for the payment return page
+          hotel: {
+            id: hotel?.id || hotel?._id,
+            propertyName: hotel?.propertyName,
+            address: hotel?.address,
+            propertyImages: hotel?.propertyImages,
+            receptionEmail: hotel?.receptionEmail,
+            receptionMobile: hotel?.receptionMobile,
+          },
+          room: {
+            id: room?.id || room?._id,
+            roomCategory: room?.roomCategory,
+            standardRoomOccupancy: room?.standardRoomOccupancy,
+            maxRoomOccupancy: room?.maxRoomOccupancy,
+            additionalGuestRate: room?.additionalGuestRate,
+          },
+          guestInfo,
+          gstDetails: gstDataForBooking,
+          discountDetails: discountData,
+          timing,
+          pricingDetails,
+          bookingType,
+          checkinDate,
+          checkOutDate,
+          checkinTime,
+          slotDuration,
+          rooms: requiredRooms,
+          adults,
+          children,
+          extraGuestCount,
+          extraGuestCharge,
+          guestsPerRoom,
+          inventoryData,
+          mealPlan,
+          mealPlanPrice: totalMealPlan,
+          mealPlanDescription: mealDesc,
+          // Store form values for customer details
+          customerDetails: {
+            customer_name: formik.values.name,
+            customer_email: formik.values.email || "guest@huts4u.com",
+            customer_phone: formik.values.phoneNumber,
+          },
+          // Store amount for payout calculations
+          amount: Math.round(grandTotal),
+        },
+        // Store the original payload for reference
+        originalPayload: payload,
+      };
+
+      // ================= SAVE FOR VERIFICATION =================
+      sessionStorage.setItem(
+        "cashfree_booking_data",
+        JSON.stringify(completeBookingData)
+      );
+
+
+      // ================= OPEN CASHFREE MODAL =================
+      const cashfree = new window.Cashfree({
+        mode: "production", // 🔥 change to "production" later
+      });
+
+      await cashfree.checkout({
+        paymentSessionId,
+        redirectTarget: "_modal", // 👈 THIS OPENS MODAL
+        theme: {
+          primaryColor: "#6A1B9A",   // 🔥 Purple
+          secondaryColor: "#9C27B0", // lighter purple
+          textColor: "#FFFFFF",
+          backgroundColor: "#FFFFFF",
+        },
+      });
+
+      // Redirect after a short delay (Cashfree will handle the redirect)
+      setTimeout(() => {
+        window.location.href = `/payment/return?order_id=${orderId}`;
+      }, 2000);
+    } catch (err) {
+      console.error("Cashfree Payment Error:", err);
       toast.error("Payment failed. Please try again.");
+    } finally {
+      setIsLoadingPayment(false);
     }
   };
+
+
 
   const navigate = useNavigate();
 
@@ -1176,7 +1214,7 @@ const BookingSummary = () => {
     },
     validationSchema,
     enableReinitialize: true,
-    onSubmit: (values) => {
+    onSubmit: async (values) => {
       // Clear previous validation error
       setValidationError(null);
 
@@ -1206,27 +1244,30 @@ const BookingSummary = () => {
       }
 
       if (isLoggedIn()) {
-        handlePayment();
+        // Direct payment for logged-in users
+        await handlePayment();
       } else {
+        // For guest users, first send OTP
         const payLoad = {
           name: values.name,
           email: values.email,
           phone: values.phoneNumber.slice(2),
         };
-        sendOTP(payLoad)
-          .then((res) => {
-            setShowOtpModal(true);
-            toast("OTP sent successfully. Please verify the OTP.");
-            setOtpData({
-              phone: values.phoneNumber.slice(2),
-              name: values.name,
-              email: values.email,
-              token: res?.data?.data,
-            });
-          })
-          .catch((err) => {
-            console.log(err);
+
+        try {
+          const res = await sendOTP(payLoad);
+          setShowOtpModal(true);
+          toast("OTP sent successfully. Please verify the OTP.");
+          setOtpData({
+            phone: values.phoneNumber.slice(2),
+            name: values.name,
+            email: values.email,
+            token: res?.data?.data,
           });
+        } catch (err) {
+          console.log(err);
+          toast.error("Failed to send OTP. Please try again.");
+        }
       }
     },
   });
@@ -2879,10 +2920,10 @@ Please ensure you have read and understood all applicable policies.
             />
 
             {/* Razorpay - Pass all data including discounts */}
-            {orderDetails && (
+            {/* {orderDetails && (
               <RenderRazorpay
                 orderDetails={orderDetails}
-                amount={grandTotal}
+                mode="modal"
                 bookingDetails={{
                   hotel,
                   room,
@@ -2936,7 +2977,7 @@ Please ensure you have read and understood all applicable policies.
                   children,
                 }}
               />
-            )}
+            )} */}
           </form>
         </CardContent>
       </Card>

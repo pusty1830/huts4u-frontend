@@ -31,6 +31,7 @@ import {
 } from "../services/services";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
+import { reversePriceBreakup } from "../components/Payments/Calculation";
 
 const MyBookings: React.FC = () => {
   const [data, setData] = useState<any[]>([]);
@@ -88,25 +89,25 @@ const MyBookings: React.FC = () => {
   // Function to find hotel by name from the hotels list
   const findHotelByName = useCallback((hotelName: string) => {
     if (!hotels.length || !hotelName) return null;
-    
+
     const normalizedSearchName = hotelName.toLowerCase().trim();
-    
+
     // Try exact match first
-    let hotel = hotels.find(h => 
+    let hotel = hotels.find(h =>
       h.name?.toLowerCase() === normalizedSearchName ||
       h.title?.toLowerCase() === normalizedSearchName ||
       h.propertyName?.toLowerCase() === normalizedSearchName
     );
-    
+
     // Try partial match if exact not found
     if (!hotel) {
-      hotel = hotels.find(h => 
+      hotel = hotels.find(h =>
         h.name?.toLowerCase().includes(normalizedSearchName) ||
         h.title?.toLowerCase().includes(normalizedSearchName) ||
         h.propertyName?.toLowerCase().includes(normalizedSearchName)
       );
     }
-    
+
     return hotel || null;
   }, [hotels]);
 
@@ -196,15 +197,15 @@ const MyBookings: React.FC = () => {
         };
         const res = await getAllMyBookings(Payload);
         const rows = res?.data?.data?.rows || [];
-        
+
         // Enrich booking data with hotel info if hotels are already loaded
         let enrichedRows = rows;
-        
+
         if (hotels.length > 0) {
           enrichedRows = rows.map((row: any) => {
             const hotelName = row.hotelName || row.propertyName || row.title;
             const hotel = findHotelByName(hotelName);
-            
+
             return {
               ...row,
               // If we found a matching hotel, add its data
@@ -216,7 +217,7 @@ const MyBookings: React.FC = () => {
             };
           });
         }
-        
+
         setData(enrichedRows);
 
         // Initialize edit map and fetch ratings for each booking
@@ -345,25 +346,6 @@ const MyBookings: React.FC = () => {
     }
   };
 
-  const reversePriceBreakup = (finalAmount: number) => {
-    const multiplier = 1.2156862745;
-    const basePrice = finalAmount / multiplier;
-    const gstOnBase = basePrice * 0.05;
-    const commission = basePrice * 0.13;
-    const gstOnCommission = commission * 0.18;
-    const core = basePrice + gstOnBase + commission + gstOnCommission;
-    const convenienceFee = core * 0.02;
-    const gstOnConvenience = convenienceFee * 0.18;
-    return {
-      basePrice: Math.round(basePrice),
-      gstOnBase,
-      commission,
-      gstOnCommission,
-      convenienceFee,
-      gstOnConvenience,
-      totalCheck: basePrice + gstOnBase + commission + gstOnCommission + convenienceFee + gstOnConvenience
-    };
-  };
 
   const handleCancelBooking = async (card: any) => {
     const amount = card.amountPaid / 100;
@@ -384,9 +366,9 @@ const MyBookings: React.FC = () => {
     setData(prev => prev.map(c => (c.id === card.id ? { ...c, status: "cancelled" } : c)));
 
     try {
-      const payLoad = { paymentId: card.paymentId, amount: refundamount };
+      const payLoad = { orderId: card.paymentId, refundAmount: refundamount };
       await cancelBooking(payLoad);
-      
+
       const cancelPayload = {
         userId: getUserId(),
         hotelId: card.hotelId,
@@ -401,7 +383,7 @@ const MyBookings: React.FC = () => {
       };
 
       await updateBookings(card.id, { status: "Cancel" });
-      
+
       // Update revenue status
       try {
         const hotelRevenuePayload = { data: { filter: "", bookingId: card.id }, page: 0, pageSize: 50 };
@@ -646,12 +628,12 @@ const MyBookings: React.FC = () => {
                 position: "relative",
                 cursor: "pointer",
               }}
-              onClick={(e) => {
-                if ((e.target as HTMLElement).closest('button, a, [role="button"]')) {
-                  return;
-                }
-                navigate(`/booking/${card.id}`, { state: card });
-              }}>
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('button, a, [role="button"]')) {
+                    return;
+                  }
+                  navigate(`/booking/${card.id}`, { state: card });
+                }}>
                 <CardContent sx={{ p: 0 }}>
                   <Box sx={{
                     position: "absolute",
@@ -672,10 +654,10 @@ const MyBookings: React.FC = () => {
                   </Box>
 
                   {/* Make hotel name clickable */}
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      fontWeight: 700, 
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontWeight: 700,
                       mb: 0.5,
                       cursor: "pointer",
                       color: color.firstColor,
@@ -688,13 +670,13 @@ const MyBookings: React.FC = () => {
                       e.stopPropagation();
                       // Navigate to hotel page with hotel data
                       if (card.hotelData || card.hotelId) {
-                        navigate(`/hotel/${card.hotelId || card.hotelData?.id}`, { 
-                          state: { 
+                        navigate(`/hotel/${card.hotelId || card.hotelData?.id}`, {
+                          state: {
                             hotelData: card.hotelData || {
                               id: card.hotelId,
                               name: card.hotelName || card.propertyName || card.title
                             }
-                          } 
+                          }
                         });
                       } else {
                         // If no hotel data, show a toast or navigate to a fallback
